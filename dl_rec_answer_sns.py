@@ -9,22 +9,13 @@ DX_RETURN_DELAY_TIME = 5       # RW
 
 class DXL_device():
 
-    def __init__(self) -> None:
-        self.devices = []
-
-    def scan_ports(self):
-        """
-        Scan all available COM ports for connected devices.
-        """
-        pattern = re.compile(r'^/dev/cu\.usbserial.*')
-        self.devices = [port for port in serial.tools.list_ports.comports() if pattern.match(port.device)]
-        
-        if not self.devices:
-            print("No devices found.")
-        else:
-            for idx, device in enumerate(self.devices, 1):
-                print(f"{idx}. {device.device}")
-
+    def __init__(self, port_timeout=100) -> None:
+        self.dxl_id = None
+        self.baudrate = None
+        self.protocol_ver = None
+        self.port_handler = None
+        self.packet_handler = None
+        self.port_timeout = port_timeout
 
     def detect_device(self):
         """Attempts to detect the ID of the connected device."""
@@ -59,6 +50,16 @@ class DXL_device():
         baudrates = [baudrate] if baudrate else [9600, 57600, 115200, 1000000]
         protocol_versions = [protocol_version] if protocol_version else [1.0, 2.0]
 
+        # # If user provides device ID, use it; otherwise, set to None
+        #                         if dxl_id:
+        #                             print(f"Trying given ID: {dxl_id}")
+        #                             self.device_id = dxl_id
+        #                             if self.detect_device():
+        #                                 self.baudrate = baudrate_option
+        #                                 self.protocol_version = protocol_option
+        #                                 print(f"Connection successful on port {port.device} with Baudrate {self.baudrate} and Protocol Version {self.protocol_version}")
+        #                                 return True
+
         # Define the pattern to match specific serial ports (adjust pattern for your system)
         pattern = re.compile(r'^/dev/cu\.usbserial.*')
         # Define the pattern to match specific serial ports (adjust pattern for your system)
@@ -78,7 +79,7 @@ class DXL_device():
                                 self.packet_handler = PacketHandler(protocol_option)
                                 self.port_handler.setBaudRate(baudrate_option)
                                 self.port_handler.openPort()
-                                
+
                                 # Try Know IDs list 
                                 possible_ids = [170]                            
                                 for dxl_id_option in possible_ids:     
@@ -108,7 +109,6 @@ class DXL_device():
                                         # add new ID in List
                                         possible_ids.append(self.device_id)
                                         print(f"List of Known IDs - {possible_ids}")
-                                        
                                         print(f"Connection successful on port {port.device} with Baudrate {self.baudrate} and Protocol Version {self.protocol_version}")
                                         return True
                                     
@@ -125,8 +125,8 @@ class DXL_device():
         print("Device not found")
         return False        
                                           
-    # def __call__(self):
-	#     return f"Your DXL device has parametrs: ID - {self.dxl_id}, Baudrate - {self.baudrate}, Protocol version - {self.protocol_ver}"
+    def __call__(self):
+	    return f"Your DXL device has parametrs: ID - {self.dxl_id}, Baudrate - {self.baudrate}, Protocol version - {self.protocol_ver}"
                                  
     
 def main():
@@ -137,10 +137,10 @@ def main():
     # print(f"{dxl_rec()}")
     
     device_comm = DXL_device()
-    #print(f"{device_comm()}")
-    device_comm.scan_ports()
-    # device_comm.connect_to_DXL_device()
-    # print(f"{device_comm()}")
+    print(f"{device_comm()}")
+    # device_comm.scan_ports()
+    device_comm.connect_to_DXL_device(171, 115200, 2.0)
+    print(f"{device_comm()}")
 
 if __name__ == '__main__':
     try:
