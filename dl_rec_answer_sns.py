@@ -7,8 +7,6 @@ DX_DXL_ID = 3                  # RW
 DX_BAUD_RATE = 4               # RW
 DX_RETURN_DELAY_TIME = 5       # RW
 
-
-
 class DXL_device():
     dxl_id = None
     baudrate = None
