@@ -8,17 +8,22 @@ DX_BAUD_RATE = 4               # RW
 DX_RETURN_DELAY_TIME = 5       # RW
 
 class DXL_device():
-    dxl_id = None
-    baudrate = None
-    protocol_ver = None
 
-    def __init__(self, port_timeout=100) -> None:
-        self.dxl_id = None
-        self.baudrate = None
-        self.protocol_ver = None
-        self.port_handler = None
-        self.packet_handler = None
-        self.port_timeout = port_timeout
+    def __init__(self) -> None:
+        self.devices = []
+
+    def scan_ports(self):
+        """
+        Scan all available COM ports for connected devices.
+        """
+        pattern = re.compile(r'^/dev/cu\.usbserial.*')
+        self.devices = [port for port in serial.tools.list_ports.comports() if pattern.match(port.device)]
+        
+        if not self.devices:
+            print("No devices found.")
+        else:
+            for idx, device in enumerate(self.devices, 1):
+                print(f"{idx}. {device.device}")
 
 
     def detect_device(self):
@@ -30,7 +35,8 @@ class DXL_device():
                 return outping_data
         return None
     
-    # def _
+    #def find_devices(self):
+
 
     def connect_to_DXL_device(self, dxl_id=None, baudrate=None, protocol_version=None):
         """
@@ -119,8 +125,8 @@ class DXL_device():
         print("Device not found")
         return False        
                                           
-    def __call__(self):
-	    return f"Your DXL device has parametrs: ID - {self.dxl_id}, Baudrate - {self.baudrate}, Protocol version - {self.protocol_ver}"
+    # def __call__(self):
+	#     return f"Your DXL device has parametrs: ID - {self.dxl_id}, Baudrate - {self.baudrate}, Protocol version - {self.protocol_ver}"
                                  
     
 def main():
@@ -131,9 +137,13 @@ def main():
     # print(f"{dxl_rec()}")
     
     device_comm = DXL_device()
-    print(f"{device_comm()}")
-    device_comm.connect_to_DXL_device()
-    print(f"{device_comm()}")
+    #print(f"{device_comm()}")
+    device_comm.scan_ports()
+    # device_comm.connect_to_DXL_device()
+    # print(f"{device_comm()}")
 
 if __name__ == '__main__':
-	main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nScript interrupted by user.")
