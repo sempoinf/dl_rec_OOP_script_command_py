@@ -337,6 +337,7 @@ class DXL_device:
             if dxl_comm_result == COMM_SUCCESS:
                 print(f"Device detected! ID: {self.dxl_id}")
                 return outping_data
+        print(f"Not device detected! ID: {self.dxl_id}")
         return None
 
     def ping_device(self) -> None:
@@ -364,9 +365,8 @@ class DXL_device:
         for port in ports:
             print(f"Trying port: {port}")
             for baudrate_option in baudrates:
-                if not self._attempt_connection(port, baudrate_option, protocol_versions):
-                    continue
-                return True
+                if self._attempt_connection(port, baudrate_option, protocol_versions):
+                    return True
 
         print("Device not found")
         return False
@@ -383,12 +383,24 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
+        # try:
+            # # Используем контекстный менеджер для автоматического закрытия порта
+            # with serial.Serial(port=port, baudrate=baudrate_option, timeout=self.port_timeout) as ser:
+            #     self.port_handler = PortHandler(ser.name)
+        ser = None
         try:
-            ser = serial.Serial(port=port, baudrate=baudrate_option, timeout=self.port_timeout)
+            # Create serial connection
+            ser = serial.Serial(port=port, baudrate=baudrate_option, timeout=100)
+
+            # Initialize PortHandler and PacketHandler
             self.port_handler = PortHandler(ser.name)
 
             for protocol_option in protocol_versions:
                 print(f"Trying Protocol Version: {protocol_option} at Baudrate: {baudrate_option}")
+                self.packet_handler = PacketHandler(protocol_option)
+                self.port_handler.setBaudRate(baudrate_option)
+                self.port_handler.openPort()
+
                 if self.dxl_id:
                     if self._find_device(self.dxl_id, baudrate_option, protocol_option, port):
                         return True
@@ -397,14 +409,12 @@ class DXL_device:
                         if self._find_device(dxl_id_option, baudrate_option, protocol_option, port):
                             return True
 
+
         except serial.SerialException as e:
             print(f"Serial error on port {port}: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
-        finally:
-            if self.port_handler:
-                self.port_handler.closePort()
-
+  
         return False
 
     def __call__(self) -> str:
@@ -413,17 +423,21 @@ class DXL_device:
         """
         return (f"Your DXL device has parameters: ID - {self.dxl_id}, "
                 f"Baudrate - {self.baudrate}, Protocol version - {self.protocol_ver}, "
-                f"Timeout - {self.port_timeout}")
+                f"Timeout - {self.port_timeout}, "
+                f"Port handler  - {self.port_handler} & Packet handler - {self.packet_handler}")
 
 class Sensor:
     def __init__(self, sensor_id: Optional[int] = None, sensor_range: Optional[int] = None, 
                  dxl_id_dev: Optional[int] = None, port_handler: Optional[Any] = None, 
                  packet_handler: Optional[Any] = None) -> None:
+        if port_handler is None or packet_handler is None:
+            raise ValueError("Port handler or Packet handler must be initialized.")
+    
         self.sns_id = sensor_id
         self.sns_range = sensor_range
         self.dxl_id_device = dxl_id_dev
-        self._port_handler = port_handler
-        self._packet_handler = packet_handler
+        self.port_handler = port_handler
+        self.packet_handler = packet_handler
 
     def _read_data(self, register_id: int, byte_count: int = 1) -> int:
         """
@@ -439,16 +453,16 @@ class Sensor:
         while True:
             time.sleep(0.5)
             if byte_count == 1:
-                data_from_reg, dxl_comm_result, dxl_error = self._packet_handler.readByteTxRx(self._port_handler, self.dxl_id_device, register_id)
+                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
             elif byte_count == 2:
-                data_from_reg, dxl_comm_result, dxl_error = self._packet_handler.read2ByteTxRx(self._port_handler, self.dxl_id_device, register_id)
+                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read2ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
             elif byte_count == 4:
-                data_from_reg, dxl_comm_result, dxl_error = self._packet_handler.read4ByteTxRx(self._port_handler, self.dxl_id_device, register_id)
+                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
             else:
                 raise ValueError(f"Unsupported byte count: {byte_count}")
         
             if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
-                comm_error_msg = self._packet_handler.getTxRxResult(dxl_comm_result)
+                comm_error_msg = self.packet_handler.getTxRxResult(dxl_comm_result)
                 print(f"Communication error on register {register_id}: {comm_error_msg}")
             else:
                 return data_from_reg
@@ -460,16 +474,16 @@ class Sensor:
         while True:
             time.sleep(0.5)
             if byte_count == 1:
-                dxl_comm_result, dxl_error = self._packet_handler.writeByteTxRx(self._port_handler, self.dxl_id_device, register_id, data_to_write)
+                dxl_comm_result, dxl_error = self.packet_handler.write1ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
             elif byte_count == 2:
-                dxl_comm_result, dxl_error = self._packet_handler.write2ByteTxRx(self._port_handler, self.dxl_id_device, register_id, data_to_write)
+                dxl_comm_result, dxl_error = self.packet_handler.write2ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
             elif byte_count == 4:
-                dxl_comm_result, dxl_error = self._packet_handler.write4ByteTxRx(self._port_handler, self.dxl_id_device, register_id, data_to_write)
+                dxl_comm_result, dxl_error = self.packet_handler.write4ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
             else:
                 raise ValueError(f"Unsupported byte count: {byte_count}")
         
             if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
-                comm_error_msg = self._packet_handler.getTxRxResult(dxl_comm_result)
+                comm_error_msg = self.packet_handler.getTxRxResult(dxl_comm_result)
                 print(f"Communication error on register {register_id}: {comm_error_msg}")
             else:
                 return True
@@ -489,20 +503,21 @@ class Sensor:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
-        print(f"Activate {self.sns_range} for {self.sns_id}")
+        print(f"Activate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
         binary_representation = bin(self.sns_range)[2:].zfill(10)  # pad to 10 bits if necessary
-
+        cur_register_id = 60
         for index, bit in enumerate(reversed(binary_representation)):
             if bit == "1":
-                for order_id in range(60, 79, 2):  # Example: Activate sensor for these ranges
-                    self._write_data(order_id, self.sns_id)
-                    self._write_data(order_id + 1, index)
+                # Example: Activate sensor for these ranges
+                self._write_data(register_id=cur_register_id, data_to_write=self.sns_id)
+                self._write_data(register_id=cur_register_id + 1, data_to_write=index)
+                cur_register_id += 2
         return True
 
     def _start_meas(self) -> bool:
         """Start Measuring sensor"""
         print(f"Start measuring")
-        self._write_data(register_id=24, data_to_write=bin(1))
+        self._write_data(register_id=24, data_to_write=1)
         return True
 
     def _check_data_written(self):
@@ -532,7 +547,7 @@ class Sensor:
         Return a string representation of the device parameters.
         """
         return (f"Your Sensor has parameters: ID - {self.sns_id}, "
-                f"Sensors port - {self.sns_port}, Sensor range - {self.sns_range}")
+                f"Sensor range - {self.sns_range}")
 
 class Data_manager():
     def __init__(self, filename="results_term_compens.txt"):
@@ -558,19 +573,22 @@ class Data_manager():
 
 def main():
     dxl_rec = DXL_device(dxl_id=171, baudrate=115200, protocol_version=2.0)
-    print(dxl_rec())
-    dxl_rec.connect_device()
-    sns_ethanol = Sensor(sensor_id=46, sensor_range=1, dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
-    # print(sns_ethanol()) 
-    if sns_ethanol.activate_sns_measure():
-        res_sns = sns_ethanol.read_sns_results()
-        if res_sns:
-            data_manager = Data_manager()
-            data_manager.write_data(res_sns)
-            if data_manager.verify_data():
-                print("Data successfully written.")
-            else:
-                print("Data verification failed.")
+    # print(dxl_rec())
+    if dxl_rec.connect_device():
+        sns_ethanol = Sensor(sensor_id=46, sensor_range=1, dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
+        print(sns_ethanol()) 
+        if sns_ethanol.activate_sns_measure():
+            res_sns = sns_ethanol.read_sns_results()
+            if res_sns:
+                data_manager = Data_manager()
+                data_manager.write_data(res_sns)
+                if data_manager.verify_data():
+                    print("Data successfully written.")
+                else:
+                    print("Data verification failed.")
+            else: print("Not results.")
+        else: print("Not activated.")
+    else: print("Not connected.")
 
 if __name__ == '__main__':
     try:
