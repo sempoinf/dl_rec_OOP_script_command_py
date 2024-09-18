@@ -6,6 +6,16 @@ from dynamixel_sdk import *
 from typing import List, Optional, Union, Any
 from enum import Enum
 
+import time
+import ctypes
+from graphics.plot import Plotter
+from threading import Thread, Event
+import random
+from rich import print as rprint
+from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QRadioButton, QPushButton, QListWidget, QListWidgetItem, QSpacerItem, QSizePolicy, QLabel, QFileDialog
+from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt
+import wave, struct
 
 class config_dev():
 
@@ -716,7 +726,7 @@ class Sensor:
         return (f"Your Sensor has parameters: ID - {self.sns_id}, "
                 f"Sensor range - {self.sns_range}")
 
-class Data_manager():
+class DataManager():
     def __init__(self, filename="results_term_compens.txt"):
         self.filename = filename
 
@@ -746,8 +756,122 @@ class Data_manager():
             return file.readlines()[-2].strip() == "END OF DATA"
 
 
-class Plotter():
-    pass 
+class PlotterManager():
+    def __init__(self, data_buff, plot_legend, max_mins, subplots) -> None:
+        """
+        Initializes the PlotterManager with data buffers, legends, and plot settings.
+        
+        Parameters:
+        data_buff (list): Buffer that stores data to be plotted.
+        plot_legend (list): List of legends for each sensor.
+        max_mins (list): Maximum and minimum values for the plot axes.
+        subplots (list): Number of subplots to be created.
+        """
+        self.data_buff = data_buff
+        self.plot_legend = plot_legend
+        self.max_mins = max_mins
+        self.subplots = subplots
+        self.plotter = Plotter(data_buff, plot_legend, max_mins, subplots=subplots)
+
+
+    def start_visualization(self) -> None:
+        """
+        Starts the visualization process in the Plotter.
+        """
+        try:
+            self.plotter.animate(self.plotter.osc_plot)
+        finally:
+            print("Plotting stopped")
+
+    def stop_visualization(self) -> None:
+        """
+        Stops the visualization process.
+        """
+        print("Plotting process manually stopped.")
+
+    def update_data_buffer(self, new_data) -> None:
+        """
+        Updates the data buffer with new data.
+
+        Parameters:
+        new_data (list): New data to be added to the buffer.
+        """
+        for i, data_list in enumerate(self.data_buff):
+            data_list.pop(0)  # Remove the oldest data point
+            data_list.append(new_data[i])  # Append the new data point
+
+    def run_data_acquisition(self, packetHandler, portHandler, sample_size, stop_event: Event) -> None:
+        """
+        Acquires data from the sensors and updates the data buffer.
+
+        Parameters:
+        packetHandler: The handler for sending and receiving data.
+        portHandler: The handler for managing port connections.
+        sample_size (int): The number of samples to acquire.
+        stop_event (Event): The event used to signal when to stop the acquisition process.
+        """
+        try:
+            time.sleep(0.1)
+            while not stop_event.is_set():
+                for frames_num in range(sample_size):
+                    while True:
+                        time.sleep(0.005)
+                        # Simulating sensor data acquisition
+                        data, dxl_comm_result, dxl_error = packetHandler.readTxRx(
+                            portHandler, DXL_ID, DX_SENSORS_DATA_FIRST, 6)
+                        if dxl_comm_result == COMM_SUCCESS:
+                            break
+
+                    # Parsing data from sensors
+                    bin_data_1 = int((data[1] | (data[2] << 8)))
+                    bin_data_2 = int((data[4] | (data[5] << 8)))
+
+                    signed_value_1 = int.from_bytes(
+                        bin_data_1.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                    signed_value_2 = int.from_bytes(
+                        bin_data_2.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+
+                    # Update the data buffer
+                    self.data_buff[0][frames_num] = signed_value_1
+                    self.data_buff[1][frames_num] = signed_value_2
+
+                    if stop_event.is_set():
+                        print("Data acquisition stopped")
+                        return
+
+                # Reset plotter's internal counters after a full frame acquisition
+                self.plotter.upd_cnt = 0
+                self.plotter.data_1.clear()
+        finally:
+            return
+
+    def run_plotting(self, packetHandler, portHandler, sample_size, stop_event: Event) -> None:
+        """
+        Starts the data acquisition and plotting processes.
+
+        Parameters:
+        packetHandler: The handler for sending and receiving data.
+        portHandler: The handler for managing port connections.
+        sample_size (int): The number of samples to acquire.
+        stop_event (Event): The event used to signal when to stop the plotting process.
+        """
+        plotter_thread = Thread(target=self.run_data_acquisition, args=(
+            packetHandler, portHandler, sample_size, stop_event))
+        plotter_thread.start()
+
+        # Start the visualization process
+        self.start_visualization()
+
+        # Signal to stop the plotter thread when done
+        stop_event.set()
+
+    def stop_plotting(self) -> None:
+        """
+        Stops the data acquisition and plotting processes.
+        """
+        print("Stopping plotting process...")
+        self.stop_visualization()
+
 
 class Application():
     pass
@@ -760,10 +884,10 @@ def main():
         sns_ethanol = Sensor(sensor_id=17, sensor_range='12', dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
         print(sns_ethanol()) 
         if sns_ethanol.activate_sns_measure():
-            time.sleep(2)
+            # time.sleep(2)
             res_sns = sns_ethanol.read_sns_results()
             if res_sns:
-                data_manager = Data_manager()
+                data_manager = DataManager()
                 data_manager.write_data(sns_ethanol.sns_id,res_sns)
                 if data_manager.verify_data():
                     print("Data successfully written.")
