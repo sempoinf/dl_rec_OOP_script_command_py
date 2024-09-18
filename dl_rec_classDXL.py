@@ -720,13 +720,15 @@ class Data_manager():
     def __init__(self, filename="results_term_compens.txt"):
         self.filename = filename
 
-    def write_data(self, data): 
+    def write_data(self, sensor_id, data): 
         """Write sensor data to a file."""
         file_exists = os.path.isfile(self.filename)
         with open(self.filename, 'a') as file:
             if not file_exists:
                 file.write("Sensor Data Pairs\n=================\n\n")
             for index, pair in enumerate(data):
+                if index == 0:
+                    file.write(f"SENSOR is active: {sensor_id}\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6}, {pair[1]:>6}\n")
@@ -744,6 +746,9 @@ class Data_manager():
             return file.readlines()[-2].strip() == "END OF DATA"
 
 
+class Plotter():
+    pass 
+
 class Application():
     pass
 
@@ -752,13 +757,14 @@ def main():
     dxl_rec = DXL_device(dxl_id=171, baudrate=115200, protocol_version=2.0)
     # print(dxl_rec())
     if dxl_rec.connect_device():
-        sns_ethanol = Sensor(sensor_id=17, sensor_range='1', dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
+        sns_ethanol = Sensor(sensor_id=17, sensor_range='12', dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
         print(sns_ethanol()) 
         if sns_ethanol.activate_sns_measure():
+            time.sleep(2)
             res_sns = sns_ethanol.read_sns_results()
             if res_sns:
                 data_manager = Data_manager()
-                data_manager.write_data(res_sns)
+                data_manager.write_data(sns_ethanol.sns_id,res_sns)
                 if data_manager.verify_data():
                     print("Data successfully written.")
                 else:
