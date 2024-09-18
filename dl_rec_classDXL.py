@@ -289,6 +289,7 @@ class DXL_device:
         self.port_timeout = port_timeout
         self.port_handler = None
         self.packet_handler = None
+        self.serial_connection = None  # For keep serial.Serial
 
     def _scan_ports(self, pattern: str = r'^/dev/cu\.usbserial.*') -> List[str]:
         """
@@ -386,17 +387,12 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
-        # try:
-            # # Используем контекстный менеджер для автоматического закрытия порта
-            # with serial.Serial(port=port, baudrate=baudrate_option, timeout=self.port_timeout) as ser:
-            #     self.port_handler = PortHandler(ser.name)
-        ser = None
         try:
             # Create serial connection
-            ser = serial.Serial(port=port, baudrate=baudrate_option, timeout=100)
+            self.serial_connection = serial.Serial(port=port, baudrate=baudrate_option, timeout=self.port_timeout)
 
             # Initialize PortHandler and PacketHandler
-            self.port_handler = PortHandler(ser.name)
+            self.port_handler = PortHandler(self.serial_connection.name)
 
             for protocol_option in protocol_versions:
                 print(f"Trying Protocol Version: {protocol_option} at Baudrate: {baudrate_option}")
@@ -411,18 +407,18 @@ class DXL_device:
                     for dxl_id_option in range(1, 255):
                         if self._find_device(dxl_id_option, baudrate_option, protocol_option, port):
                             return True
-            if ser and ser.is_open:
-                ser.close()
+            self._close_used_serPort()
 
         except serial.SerialException as e:
             print(f"Serial error on port {port}: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
-  
         return False
     
-    def _close_used_serport(self):
-        pass
+    def close_used_serPort(self):
+        if self.serial_connection and self.serial_connection.is_open:
+            self.serial_connection.close()
+            print("Port closed successfully.")
 
     def __call__(self) -> str:
         """
@@ -508,7 +504,7 @@ class Sensor:
                 self.sns_port = reg_port_sns_option
                 print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
 
-    def _set_range(self, nums_sns=1) -> bool:
+    def _set_range_binary(self, nums_sns=1) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -525,7 +521,23 @@ class Sensor:
                 cur_register_id += 2
         return True
     
-    def _unset_range(self, nums_sns=1) -> bool:
+    def _set_range(self, nums_sns=1) -> bool:
+        """
+        Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
+        """
+        print(f"Activate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
+        # print(binary_representation)
+        cur_register_id = 60
+        range_num_str = str(self.sns_range)
+        for range in range_num_str:
+                # Example: Activate sensor for these ranges
+                self._write_data(register_id=cur_register_id, data_to_write=self.sns_id)
+                # print(range)
+                self._write_data(register_id=cur_register_id + 1, data_to_write=int(range)-1)
+                cur_register_id += 2
+        return True
+    
+    def _unset_range_binary(self, nums_sns=1) -> bool:
         """
         Unset the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -537,6 +549,22 @@ class Sensor:
             if bit == "1":
                 # Example: Activate sensor for these ranges
                 self._write_data(register_id=cur_register_id, data_to_write=0)
+                self._write_data(register_id=cur_register_id + 1, data_to_write=0)
+                cur_register_id += 2
+        return True
+
+    def _unset_range(self, nums_sns=1) -> bool:
+        """
+        Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
+        """
+        print(f"Deactivate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
+        # print(binary_representation)
+        cur_register_id = 60
+        range_num_str = str(self.sns_range)
+        for range in range_num_str:
+                # Example: Activate sensor for these ranges
+                self._write_data(register_id=cur_register_id, data_to_write=0)
+                # print(index)
                 self._write_data(register_id=cur_register_id + 1, data_to_write=0)
                 cur_register_id += 2
         return True
@@ -553,7 +581,7 @@ class Sensor:
         self._write_data(register_id=24, data_to_write=0)
         return True
 
-    def _check_data_written(self):
+    def _check_data_written(self) -> bool:
         data_reg_60 = self._read_data(register_id=60)
         print(f"DX_ENABLE_SENSOR_ID_0_ID - {data_reg_60}")
         data_reg_61 = self._read_data(register_id=61)
@@ -564,6 +592,7 @@ class Sensor:
         print(f"DX_ENABLE_SENSOR_ID_1_RANGE - {data_reg_63}")
         data_reg_24 = self._read_data(register_id=24)
         print(f"DX_MEAS_START_STOP - {data_reg_24}")
+        return True
 
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
@@ -583,7 +612,7 @@ class Sensor:
                 return True
         else: False
 
-    def read_sns_results(self)-> list:
+    def read_sns_results_manual(self)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
         for pair_n in range(2):
@@ -593,11 +622,55 @@ class Sensor:
             print(f"From register DX_SENSORS_DATA_FIRST read: {data_85}")
             if data_85:
                 data_read.append(self._read_data(register_id=85+1, byte_count=2))
-                # data_read.append(self._read_data(register_id=85+3, byte_count=2))
+            data_88 = self._read_data(register_id=88, byte_count=1)
+            print(f"From register DX_SENSORS_DATA_FIFTH read: {data_88}")
+            if data_88:
+                data_read.append(self._read_data(register_id=88+1, byte_count=2))
                 print(f"Data {pair_n} iter written")
         print(f"Data taken {data_read}")
         return data_read
+    
+    def read_sns_results(self)-> list:
+        """Start get data from regs desiring sns"""
+        data_read = []
+        range_num_str = str(self.sns_range)
+        # nums of itterarion от self.range
+        for pair_n in range(2):
+            print(f"Itter {pair_n}")
+            
+            # Initialize register addresses
+            reg_status = 85
+            reg_value = 86
+            # List to store data for the current iteration
+            current_data = []
+            for num in range_num_str:
+                time.sleep(1)
+                # Read the status from the current register
+                data_status = self._read_data(register_id=reg_status, byte_count=1)
+                print(f"From register DX_SENSORS_DATA_{num} read: {data_status}")
+                # Define the register for the value based on the status register
+                reg_status = reg_value + 2
+                # print(f"reg_status -- {reg_status}")
+                if data_status:
+                    # If status is read successfully, read the value + append
+                    current_data.append(self._read_data(register_id=reg_value, byte_count=2))
+                
+                # Move to the next range's registers
+                reg_value = reg_status - 1
+                # print(f"reg_value -- {reg_value}")
 
+            # If more than one digit in the range, group data into tuples
+            if len(range_num_str) > 1:
+                # Group data into tuples of pairs
+                data_read.extend(tuple(current_data[i:i+2]) for i in range(0, len(current_data), 2))
+            else:
+                # Append single values to the list
+                data_read.extend(current_data)
+
+            print(f"Data {pair_n} iter written")
+        
+        print(f"Data taken {data_read}")
+        return data_read
 
     def __call__(self, *args: Any, **kwds: Any) -> str:
         """
@@ -617,12 +690,12 @@ class Data_manager():
             if not file_exists:
                 file.write("Sensor Data Pairs\n=================\n\n")
             for index, pair in enumerate(data):
-                # Проверяем, является ли элемент кортежем
+                # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6}, {pair[1]:>6}\n")
                 else:
-                    print(f"Not tuples data at index {index+1}: {pair}")
-                    file.write(f"Just value from range {index+1}: {pair}\n")
+                    # print(f"Not tuples data at index {index+1}: {pair}")
+                    file.write(f"Just value tick {index+1}: {pair}\n")
             file.write("\nEND OF DATA\n\n")
 
     def verify_data(self):
@@ -630,9 +703,8 @@ class Data_manager():
         if not os.path.isfile(self.filename):
             return False
         with open(self.filename, 'r') as file:
-            print(f"Why?")
+            # print(f"Why?")
             return file.readlines()[-2].strip() == "END OF DATA"
-
 
 def main():
     dxl_rec = DXL_device(dxl_id=171, baudrate=115200, protocol_version=2.0)
@@ -656,6 +728,7 @@ def main():
     else: 
         print("Not connected.")
     sns_ethanol.deactivate_sns_measure()
+    dxl_rec.close_used_serPort()
 
 
 if __name__ == '__main__':
