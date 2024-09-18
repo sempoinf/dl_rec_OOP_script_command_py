@@ -494,19 +494,51 @@ class Sensor:
             else:
                 return True
 
+    def _choose_sns(self,found_sns):
+        """Prompt user to select a sensor from the found sensors."""
+        if found_sns:
+            print("Sensors found:")
+            for sns_id, port_name in found_sns.items():
+                print(f"Sensor ID: {sns_id} on {port_name}")
+        
+            while True:
+                selected_id = input("Enter the Sensor ID you want to select: ")
+                try:
+                    selected_id = int(selected_id)
+                    if selected_id in found_sns:
+                        self.sns_id = selected_id
+                        self.sns_port = found_sns[selected_id]  # Corrected: Set the sensor port based on ID
+                        print(f"Selected Sensor {self.sns_id} on {self.sns_port}.")
+                        break
+                    else:
+                        print("Selected Sensor ID is not valid.")
+                except ValueError:
+                    print("Invalid input. Please enter a numeric Sensor ID.")
+        else:
+            print("No sensors found.")
+
     def _find_sns_port(self):
         """Find the port where the sensor with the desired ID is connected."""
-        print(f"Checking where sensor {self.sns_id} is connected.")
+        print(f"Checking where sensors is connected.")
         # Port related constants
-        # for port_sns_option in range(37, 44, 2):
+        if self.sns_id is None:
+            found_sensors = {}
         ports_sns = {37:"Port1", 39:"Port_2", 41:"Port_3", 43:"Port_4"}
         for reg_port_sns_option, name_port_sns_option  in zip(ports_sns.keys(), ports_sns.values()): 
             cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
             print(f"Name Port {name_port_sns_option}  Register port - {reg_port_sns_option} SNS_ID - {cur_sns_id}")
+            if self.sns_id is None:
+                # Collect all found sensors
+                if cur_sns_id not in found_sensors:
+                    found_sensors[cur_sns_id] = name_port_sns_option
+                    print(found_sensors)
+                    break
             if self.sns_id == cur_sns_id:
                 self.sns_port = reg_port_sns_option
                 print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
-
+                return
+        self._choose_sns(found_sensors)
+        
     def _set_range_binary(self, nums_sns=1) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
@@ -602,7 +634,8 @@ class Sensor:
 
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
-        # self._find_sns_port()
+        if not self.sns_id:
+            self._find_sns_port()
         if self._set_range():
             if self._start_meas():
                 # self._check_data_written()
@@ -716,10 +749,10 @@ class Application():
 
 
 def main():
-    dxl_rec = DXL_device(dxl_id=171)
+    dxl_rec = DXL_device(dxl_id=171, baudrate=115200, protocol_version=2.0)
     # print(dxl_rec())
     if dxl_rec.connect_device():
-        sns_ethanol = Sensor(sensor_id=17, sensor_range='12', dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
+        sns_ethanol = Sensor(sensor_id=17, sensor_range='1', dxl_id_dev=dxl_rec.dxl_id ,port_handler=dxl_rec.port_handler, packet_handler=dxl_rec.packet_handler)
         print(sns_ethanol()) 
         if sns_ethanol.activate_sns_measure():
             res_sns = sns_ethanol.read_sns_results()
