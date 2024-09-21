@@ -11,6 +11,7 @@ __pycache__/
 *.nova/Configuration.json
 
 # Sample for understanding
+dl_rec_answer_sns.py
 #test_dict.py
 
 # Results of script
