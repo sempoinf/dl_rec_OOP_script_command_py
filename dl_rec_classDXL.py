@@ -863,6 +863,7 @@ class PlotterManager:
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.sublots)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, sample_size, self.plotter_stop_event))
         plotter_thread.start()  # Start the background thread for data collection
+        print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
 
     def plotter_proc(self, packetHandler, portHandler, sample_size, stop_event: Event):
@@ -938,16 +939,18 @@ class Application():
             sensors = Sensor(sensor_id=self.sns_ids, sensor_range=self.sns_ranges, dxl_id_dev=self.dxl_id_devs, port_handler=devices.port_handler, packet_handler=devices.packet_handler)
             # print(sensors()) 
             if sensors.activate_sns_measure():
-                res_sns = sensors.read_sns_results()
-                if res_sns:
                     if self.mode == "write":
                         # itter list to read data from all sns and write data?
-                        data_manager = DataManager(filename=self.file_names)
-                        data_manager.write_data(sensor_id=sensors.sns_id,sensor_range=sensors.sns_range, data=res_sns)
-                        if data_manager.verify_data():
-                            print("Data successfully written.")
-                        else:
-                            print("Data verification failed.")
+                        res_sns = sensors.read_sns_results()
+                        if res_sns:
+                            data_manager = DataManager(filename=self.file_names)
+                            data_manager.write_data(sensor_id=sensors.sns_id,sensor_range=sensors.sns_range, data=res_sns)
+                            if data_manager.verify_data():
+                                print("Data successfully written.")
+                            else:
+                                print("Data verification failed.")
+                        else: 
+                            print("Not results.")
                     elif self.mode == "plotting":
                         # itter list to read data from all sns and draw graphics?
                         data_buff = [[None] * 1024, [None] * 1024]
@@ -957,17 +960,6 @@ class Application():
                         plotter_manager = PlotterManager(data=data_buff, labels=plot_legend, max_mins=max_mins, sublots=sublots)
                         # Start plotting and data acquisition
                         plotter_manager.start(packetHandler=devices.packet_handler, portHandler=devices.port_handler)
-                        # Example runtime duration
-                        try:
-                            # Let it run for some time, e.g., 10 seconds
-                            time.sleep(10)
-                        except KeyboardInterrupt:
-                            print("Interrupted by user.")
-                        finally:
-                            # Stop plotting and data acquisition
-                            plotter_manager.stop_plotting()
-                else: 
-                    print("Not results.")
             else: 
                 print("Not activated.")
         else: 
