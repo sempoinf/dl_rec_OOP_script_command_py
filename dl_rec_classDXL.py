@@ -843,11 +843,11 @@ class DataManager:
             return file.readlines()[-2].strip() == "END OF DATA"
 
 class PlotterManager:
-    def __init__(self, data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, sublots: list=None):
+    def __init__(self, data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
         self.data = data  # Sensor data buffer
         self.labels = labels  # Labels for the plots
         self.max_mins = max_mins  # Min/Max values for the y-axis scaling
-        self.sublots = sublots if sublots else [len(data)]  # Define subplots or use default
+        self.subplots = subplots if subplots else [len(data)]  # Define subplots or use default
         self.show_legend = show_legend  # Whether to show the legend
         self.title = title  # Title for the plot
         self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
@@ -860,7 +860,7 @@ class PlotterManager:
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-        self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.sublots)
+        self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, sample_size, self.plotter_stop_event))
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
@@ -910,12 +910,26 @@ class PlotterManager:
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         pass
 
-class Application():
-    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = None, protocol_version: Optional[float] = None, port_timeout: int = 100,
-                 sensor_id: Optional[int] = None, sensor_range : Optional[str] = None, 
-                 filename: Optional[str] = None, 
-                 mode: Optional[str]= None) -> None:
+
+class Application:
+    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 9600,
+        protocol_version: Optional[float] = 2.0, port_timeout: int = 100,
+        sensor_id: Optional[int] = None, sensor_range: Optional[str] = None,
+        filename: Optional[str] = None,
+        mode: Optional[str] = None) -> None:
+        """
+        Initializes the Application with device and sensor configurations.
         
+        Parameters:
+            dxl_id (Optional[int]): Device ID for DXL_device.
+            baudrate (Optional[int]): Baudrate for serial communication.
+            protocol_version (Optional[float]): Protocol version for communication.
+            port_timeout (int): Timeout for the serial port in milliseconds.
+            sensor_id (Optional[int]): Sensor ID to activate.
+            sensor_range (Optional[str]): Range configuration for the sensor.
+            filename (Optional[str]): Filename for data writing.
+            mode (Optional[str]): Operation mode ('write' or 'plotting').
+        """
         self.dxl_id_devs = dxl_id
         self.baudrates = baudrate
         self.protocols = protocol_version
@@ -929,64 +943,158 @@ class Application():
         self.mode = mode
         self.port_handler = None
         self.packet_handler = None
-        self.serial_connection = None  # For keep serial.Serial
-    
+        self.serial_connection = None  # For keeping the serial.Serial connection
+
+        # Initialize device and sensor to None
+        self.devices = None
+        self.sensors = None
+        self.data_manager = None
+        self.plotter_manager = None
+
     def run(self):
-        devices = DXL_device(dxl_id=self.dxl_id_devs, baudrate=self.baudrates, protocol_version=self.protocols)
-        time.sleep(1)
-        # print(devices())
-        if devices.connect_device():
-            sensors = Sensor(sensor_id=self.sns_ids, sensor_range=self.sns_ranges, dxl_id_dev=self.dxl_id_devs, port_handler=devices.port_handler, packet_handler=devices.packet_handler)
-            # print(sensors()) 
-            if sensors.activate_sns_measure():
-                    if self.mode == "write":
-                        # itter list to read data from all sns and write data?
-                        res_sns = sensors.read_sns_results()
-                        if res_sns:
-                            data_manager = DataManager(filename=self.file_names)
-                            data_manager.write_data(sensor_id=sensors.sns_id,sensor_range=sensors.sns_range, data=res_sns)
-                            if data_manager.verify_data():
-                                print("Data successfully written.")
-                            else:
-                                print("Data verification failed.")
-                        else: 
-                            print("Not results.")
-                    elif self.mode == "plotting":
-                        # itter list to read data from all sns and draw graphics?
-                        data_buff = [[None] * 1024, [None] * 1024]
-                        plot_legend = ["Sensor 1", "Sensor 2"]
-                        max_mins = [[-2000, +2000]]
-                        sublots = [2]       
-                        plotter_manager = PlotterManager(data=data_buff, labels=plot_legend, max_mins=max_mins, sublots=sublots)
-                        # Start plotting and data acquisition
-                        plotter_manager.start(packetHandler=devices.packet_handler, portHandler=devices.port_handler)
-            else: 
-                print("Not activated.")
-        else: 
-            print("Not connected.")
-        sensors.deactivate_sns_measure()
-        devices.close_used_serPort()    
-        print("Finish")
-        quit()
-    
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        return (f"Your DXL device has parameters: ID - {self.dxl_id_devs}, "
-                f"Baudrate - {self.baudrates}, Protocol version - {self.protocols}, "
-                f"Timeout - {self.port_timeout}, "
-                f"Port handler  - {self.port_handler} & Packet handler - {self.packet_handler}.\n"
-                f"Your Sensor has parameters: ID - {self.sns_ids}, "
-                f"Sensor range - {self.sns_ranges}.\n"
-                f"File, using for data writing - {self.file_names}")
+        """
+        Executes the main application logic based on the selected mode.
+        Ensures that resources are cleaned up gracefully upon completion or error.
+        """
+        try:
+            self._connect_device()
+            self._initialize_sensor()
+
+            if self.sensors.activate_sns_measure():
+                if self.mode == "write":
+                    self._write_mode()
+                elif self.mode == "plotting":
+                    self._plotting_mode()
+                else:
+                    print(f"Unknown mode: {self.mode}. Exiting.")
+            else:
+                print("Failed to activate sensor measurements.")
+
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        finally:
+            self._deactivate_and_cleanup()
+            print("Application finished.")
+
+    def _connect_device(self):
+        """
+        Connects to the DXL device using the provided configurations.
+        """
+        print("Connecting to DXL device...")
+        self.devices = DXL_device(
+            dxl_id=self.dxl_id_devs,
+            baudrate=self.baudrates,
+            protocol_version=self.protocols,
+            port_timeout=self.port_timeout
+        )
+        time.sleep(1)  # Wait for the device to initialize
+
+        if self.devices.connect_device():
+            print("Device connected successfully.")
+        else:
+            raise ConnectionError("Failed to connect to the DXL device.")
+
+    def _initialize_sensor(self):
+        """
+        Initializes the sensor with the connected device's handlers.
+        """
+        print("Initializing sensor...")
+        self.sensors = Sensor(
+            sensor_id=self.sns_ids,
+            sensor_range=self.sns_ranges,
+            dxl_id_dev=self.dxl_id_devs,
+            port_handler=self.devices.port_handler,
+            packet_handler=self.devices.packet_handler
+        )
+
+    def _write_mode(self):
+        """
+        Handles the 'write' mode: reads data from sensors and writes it to a file.
+        """
+        print("Running in 'write' mode...")
+        res_sns = self.sensors.read_sns_results()
+
+        if res_sns:
+            self.data_manager = DataManager(filename=self.file_names)
+            self.data_manager.write_data(
+                sensor_id=self.sensors.sns_id,
+                sensor_range=self.sensors.sns_range,
+                data=res_sns
+            )
+
+            if self.data_manager.verify_data():
+                print("Data successfully written and verified.")
+            else:
+                print("Data verification failed.")
+        else:
+            print("No sensor results to write.")
+
+    def _plotting_mode(self):
+        """
+        Handles the 'plotting' mode: collects sensor data and visualizes it.
+        """
+        print("Running in 'plotting' mode...")
+        # Initialize data buffer and plot settings
+        data_buff = [[None] * 1024 for _ in range(2)]  # Assuming two sensors
+        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff))]
+        max_mins = [[-2000, 2000] for _ in range(len(data_buff))]
+        subplots = [2]  # Adjust based on the number of sensors or requirements
+
+        # Initialize PlotterManager
+        self.plotter_manager = PlotterManager(
+            data=data_buff,
+            labels=plot_legend,
+            max_mins=max_mins,
+            show_legend=True,
+            title="Sensor Data Visualization",
+            subplots=subplots
+        )
+
+        # Start plotting and data acquisition
+        self.plotter_manager.start(
+            packetHandler=self.devices.packet_handler,
+            portHandler=self.devices.port_handler,
+            sample_size=1024
+        )
+
+    def _deactivate_and_cleanup(self):
+        """
+        Deactivates sensor measurements and closes the serial port.
+        Ensures all resources are properly released.
+        """
+        print("Deactivating sensor measurements...")
+        if self.sensors:
+            try:
+                self.sensors.deactivate_sns_measure()
+                print("Sensor deactivated successfully.")
+            except Exception as e:
+                print(f"Error deactivating sensor: {e}")
+
+        print("Closing serial port...")
+        if self.devices:
+            try:
+                self.devices.close_used_serPort()
+                print("Serial port closed successfully.")
+            except Exception as e:
+                print(f"Error closing serial port: {e}")
+
 
     
 def main(args: list):
-    program = Application(dxl_id=171, baudrate=115200, protocol_version=2.0, sensor_id=3, sensor_range='1', filename="results_term_compens.txt", mode='plotting')
-    print(program())
-    program.run()
+    # Define configurations
+    DXL_ID = 171            # Replace with your actual device ID
+    BAUDRATE = 115200
+    PROTOCOL_VER = 2.0
+    PORT_TIM = 100          # milliseconds
 
+    SENSOR_ID = 3           # Set to None to allow selection
+    SENSOR_RANGE = "1"      # Replace with actual range configuration
+    FILENAME = "results_term_compens.txt"
+    MODE = "plotting"       # "write" or "plotting"
+
+    app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
+
+    app.run()
 
 if __name__ == '__main__':
-    try:
-        main(sys.argv)
-    except KeyboardInterrupt:
-        print("\nScript interrupted by user.")
+    main(sys.argv)
