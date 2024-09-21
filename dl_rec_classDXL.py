@@ -281,7 +281,7 @@ class Sensor:
         self.port_handler = port_handler
         self.packet_handler = packet_handler
 
-    def _read_data_elif(self, register_id: int, byte_count: int = 1) -> int:
+    def _read_data_elif(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
 
@@ -309,7 +309,7 @@ class Sensor:
             else:
                 return data_from_reg
             
-    def _read_data(self, register_id: int, byte_count: int = 1) -> int:
+    def _read_data(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
 
@@ -338,7 +338,7 @@ class Sensor:
             else:
                 return data_from_reg
 
-    def _read_data_universal(self, register_id: int, byte_count: int = 1) -> int:
+    def _read_data_universal(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
 
@@ -359,7 +359,7 @@ class Sensor:
             else:
                 return data_from_reg
             
-    def _write_data_elif(self, register_id: int, data_to_write, byte_count: int = 1):
+    def _write_data_elif(self, register_id: int, data_to_write, byte_count: int=1):
         """
         Writes a specified number of bytes to a given register.
         """
@@ -380,7 +380,7 @@ class Sensor:
             else:
                 return True
             
-    def _write_data(self, register_id: int, data_to_write, byte_count: int = 1):
+    def _write_data(self, register_id: int, data_to_write, byte_count: int=1):
         """
         Writes a specified number of bytes to a given register.
         """
@@ -402,7 +402,7 @@ class Sensor:
             else:
                 return True
 
-    def _write_data_universal(self, register_id: int, data_to_write, byte_count: int = 1):
+    def _write_data_universal(self, register_id: int, data_to_write, byte_count: int=1):
         """
         Writes a specified number of bytes to a given register.
         """
@@ -415,7 +415,7 @@ class Sensor:
             else:
                 return True
 
-    def _choose_sns(self,found_sns) -> bool:
+    def _choose_sns(self,found_sns: list) -> bool:
         """Prompt user to select a sensor from the found sensors."""
         if found_sns:
             print("Sensors found:")
@@ -446,7 +446,7 @@ class Sensor:
         ports_sns = {37:"Port_1", 39:"Port_2", 41:"Port_3", 43:"Port_4"}
         for reg_port_sns_option, name_port_sns_option  in zip(ports_sns.keys(), ports_sns.values()): 
             cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
-            print(f"Name {name_port_sns_option} -> Ports register - {reg_port_sns_option} -> SNS_ID - {cur_sns_id}")
+            print(f"Name {name_port_sns_option} -> SNS_ID - {cur_sns_id}")
             if self.sns_id == cur_sns_id:
                 self.sns_port = reg_port_sns_option
                 print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
@@ -462,7 +462,7 @@ class Sensor:
         else: 
             return True
         
-    def _set_range_binary(self, nums_sns=1) -> bool:
+    def _set_range_binary(self, nums_sns: int=1) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -479,7 +479,7 @@ class Sensor:
                 cur_register_id += 2
         return True
     
-    def _set_range(self, nums_sns=1) -> bool:
+    def _set_range(self, nums_sns: int=1) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -495,7 +495,7 @@ class Sensor:
                 cur_register_id += 2
         return True
     
-    def _unset_range_binary(self, nums_sns=1) -> bool:
+    def _unset_range_binary(self, nums_sns: int=1) -> bool:
         """
         Unset the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -511,7 +511,7 @@ class Sensor:
                 cur_register_id += 2
         return True
 
-    def _unset_range(self, nums_sns=1) -> bool:
+    def _unset_range(self, nums_sns: int=1) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -592,7 +592,7 @@ class Sensor:
         print(f"Data taken {data_read}")
         return data_read
     
-    def read_sns_results(self, count_bytes_res = 2)-> list:
+    def read_sns_results(self, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
         # range_num_str = str(self.sns_range)
@@ -668,6 +668,12 @@ class DataManager:
         with open(self.filename, 'r') as file:
             # print(f"Why?")
             return file.readlines()[-2].strip() == "END OF DATA"
+        
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        """
+        Return a string representation of the file parameters.
+        """
+        return (f"Your Sensor has parameters: ID - {self.filename}")
 
 class PlotterManager:
     def __init__(self, data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
@@ -680,7 +686,7 @@ class PlotterManager:
         self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
         self.plotter = None  # Plotter instance to be initialized later
 
-    def start(self, packetHandler, portHandler, sample_size=1024):
+    def start(self, packetHandler, portHandler, sample_size: int=1024):
         """
         Starts the data collection and plotting process.
         :param packetHandler: Communication handler for the device
@@ -694,7 +700,7 @@ class PlotterManager:
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
 
-    def plotter_proc(self, packetHandler, portHandler, sample_size, stop_event: Event):
+    def plotter_proc(self, packetHandler, portHandler, sample_size: int, stop_event: Event):
         """
         Background process to collect data from sensors.
         :param packetHandler: Communication handler
@@ -736,7 +742,16 @@ class PlotterManager:
         self.plotter_stop_event.set()  # Signal the plotter thread to stop when plotting ends
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
-        pass
+        """
+        Return a string representation of the file parameters.
+        """
+        return (f"Your Plot has parameters: Sensor data buffer - {self.data}, "
+                f"Labels for the plots - {self.labels}, "
+                f"Min/Max values for the y-axis scaling - {self.max_mins}, "
+                f"Define subplots or use default - {self.subplots}, "
+                f"Whether to show the legend - {self.show_legend}, "
+                f"Title for the plot - {self.title}"
+                )
 
 
 class Application:
@@ -918,7 +933,7 @@ def main(args: list):
     SENSOR_ID = 3           # Set to None to allow selection
     SENSOR_RANGE = "1"      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "plotting"       # "write" or "plotting"
+    MODE = "write"       # "write" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
