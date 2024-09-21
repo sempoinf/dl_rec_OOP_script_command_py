@@ -52,12 +52,15 @@ class Plotter:
 
         self.labels = labels
         self.plot = [[] for i in range(len(data))]
-        print(self.plot)
+        # print(self.plot)
 
         self.x = np.arange(window_size)
+  
+        # trouble here
         self.intensity_plot_init(self, window_size, ch_num, max_mins, title, \
                                  show_legend, sublots)
 
+        
         self.buttons = list()
         self.anim = None
 
@@ -114,7 +117,9 @@ class Plotter:
         if show_legend:
             visibility = [True for _ in range(ch_num)]
             rax = self.fig.add_axes([0.8, 0.5 - ((0.05 * ch_num) / 2), 0.15, 0.05 * ch_num])
+            
             self.check = CheckButtons(rax, self.labels, visibility)
+            
             for rect, color in zip(self.check.rectangles, color_set):
                 rect.set_facecolor(color)
             self.check.on_clicked(self.legend_clbk)

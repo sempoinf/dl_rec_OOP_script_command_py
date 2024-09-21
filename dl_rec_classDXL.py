@@ -860,6 +860,7 @@ class PlotterManager:
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
+        
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, sample_size, self.plotter_stop_event))
         plotter_thread.start()  # Start the background thread for data collection
