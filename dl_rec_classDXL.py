@@ -592,12 +592,12 @@ class Sensor:
         print(f"Data taken {data_read}")
         return data_read
     
-    def read_sns_results(self, count_bytes_res: int=2)-> list:
+    def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
         # range_num_str = str(self.sns_range)
         # nums of itterarion от self.range
-        for pair_n in range(2):
+        for pair_n in range(count_of_measure):
             # print(f"Count of take measures {pair_n}")
             # Initialize register addresses
             reg_status = 85
@@ -855,7 +855,7 @@ class Application:
         Handles the 'write' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'write' mode...")
-        res_sns = self.sensors.read_sns_results()
+        res_sns = self.sensors.read_sns_results(count_of_measure=4)
 
         if res_sns:
             self.data_manager = DataManager(filename=self.file_names)
@@ -930,7 +930,7 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = 3           # Set to None to allow selection
+    SENSOR_ID = 22           # Set to None to allow selection
     SENSOR_RANGE = "1"      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
     MODE = "write"       # "write" or "plotting"
