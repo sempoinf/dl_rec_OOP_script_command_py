@@ -1046,8 +1046,8 @@ class Application:
             data=data_buff,
             labels=plot_legend,
             max_mins=max_mins,
-            show_legend=True,
-            title="Sensor Data Visualization",
+            # show_legend=True,
+            # title="Sensor Data Visualization",
             subplots=subplots
         )
 
