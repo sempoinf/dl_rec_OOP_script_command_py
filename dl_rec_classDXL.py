@@ -843,168 +843,68 @@ class DataManager:
             return file.readlines()[-2].strip() == "END OF DATA"
 
 class PlotterManager:
-    def __init__(self, packet_handler, port_handler, data_buff: list, 
-             plot_legend: list, max_mins: list, sample_size: int=1024, show_legend: bool=False, 
-             title: str=None, subplots: list=None) -> None:
+    def __init__(self, data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, sublots: list=None):
+        self.data = data  # Sensor data buffer
+        self.labels = labels  # Labels for the plots
+        self.max_mins = max_mins  # Min/Max values for the y-axis scaling
+        self.sublots = sublots if sublots else [len(data)]  # Define subplots or use default
+        self.show_legend = show_legend  # Whether to show the legend
+        self.title = title  # Title for the plot
+        self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
+        self.plotter = None  # Plotter instance to be initialized later
+
+    def start(self, packetHandler, portHandler, sample_size=1024):
         """
-        Initializes the PlotterManager to handle interactions with the Plotter class.
-    
-        Parameters:
-        packet_handler (Any): The packet handler for communication.
-        port_handler (Any): The port handler for communication.
-        sample_size (int): The number of data samples to acquire per iteration.
-        data_buff (list): Buffer to hold sensor data.
-        plot_legend (list): List containing legend labels for plotting.
-        max_mins (list): List containing the max and min values for the plot axes.
-        show_legend (bool): Whether to display the legend on the plot.
-        title (str): Title of the plot.
-        subplots (list): Number of subplots for the plot.
+        Starts the data collection and plotting process.
+        :param packetHandler: Communication handler for the device
+        :param portHandler: Port handler for the device
+        :param sample_size: Number of samples to collect per update
         """
-        self.packet_handler = packet_handler
-        self.port_handler = port_handler
-        self.sample_size = sample_size
-        self.data_buff = data_buff
-        self.plot_legend = plot_legend
-        self.max_mins = max_mins
-        self.show_legend = show_legend
-        self.title = title
-        self.subplots = subplots
+        self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.sublots)
+        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, sample_size, self.plotter_stop_event))
+        plotter_thread.start()  # Start the background thread for data collection
+        self.visual_process(self.plotter)  # Start the plotting in the main thread
 
-        # Initialize Plotter
-        try:
-            self.plotter = Plotter(
-                data=self.data_buff,
-                labels=self.plot_legend,
-                max_mins=self.max_mins,
-                show_legend=self.show_legend,
-                title=self.title,
-                sublots=self.subplots  # Ensure 'sublots' matches Plotter's __init__ parameter
-            )
-        except TypeError as e:
-            print(f"Error initializing Plotter: {e}")
-            # Handle the error or initialize without 'sublots'
-            self.plotter = Plotter(
-                data=self.data_buff,
-                labels=self.plot_legend,
-                max_mins=self.max_mins,
-                show_legend=self.show_legend,
-                title=self.title
-            )
-
-        # Thread control events
-        self.data_acquisition_stop_event = Event()
-        self.plotting_stop_event = Event()
-
-        # Threads
-        self.data_thread = None
-        self.plot_thread = None
-
-
-    def start_plotting(self):
+    def plotter_proc(self, packetHandler, portHandler, sample_size, stop_event: Event):
         """
-        Starts the data acquisition and plotting processes in separate threads.
+        Background process to collect data from sensors.
+        :param packetHandler: Communication handler
+        :param portHandler: Port handler
+        :param sample_size: Number of samples to collect per update
+        :param stop_event: Event to signal when to stop the process
         """
-        # Start data acquisition thread
-        self.data_thread = Thread(target=self._data_acquisition_process, daemon=True)
-        self.data_thread.start()
-        print("Data acquisition thread started.")
+        time.sleep(0.1)
+        while not stop_event.is_set():
+            for frame_num in range(sample_size):
+                # Collect data from the device (sensor)
+                while True:
+                    time.sleep(0.005)
+                    data, dxl_comm_result, dxl_error = packetHandler.readTxRx(portHandler, 171, 85, 6)
+                    if dxl_comm_result == COMM_SUCCESS:
+                        break
 
-        # Start plotting thread
-        self.plot_thread = Thread(target=self._plotting_process, daemon=True)
-        self.plot_thread.start()
-        print("Plotting thread started.")
+                # Process the raw data
+                bin_data_1 = int((data[1] | (data[2] << 8)))
+                bin_data_2 = int((data[4] | (data[5] << 8)))
 
-    def stop_plotting(self):
+                signed_value_1 = int.from_bytes(bin_data_1.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                signed_value_2 = int.from_bytes(bin_data_2.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+
+                # Update the data buffer
+                self.data[0][frame_num] = signed_value_1
+                self.data[1][frame_num] = signed_value_2
+
+            # Signal the plotter to update
+            self.plotter.upd_cnt = 0
+
+    def visual_process(self, plotter: Plotter):
         """
-        Signals both data acquisition and plotting threads to stop and waits for them to finish.
+        Starts the animation process in the main thread to visualize the data.
+        :param plotter: Plotter instance
         """
-        # Signal the threads to stop
-        self.data_acquisition_stop_event.set()
-        self.plotting_stop_event.set()
-        print("Stop signals sent to threads.")
-
-        # Wait for threads to finish
-        if self.data_thread:
-            self.data_thread.join()
-            print("Data acquisition thread stopped.")
-        if self.plot_thread:
-            self.plot_thread.join()
-            print("Plotting thread stopped.")
-
-        print("Plotting and data acquisition stopped successfully.")
-
-    def _data_acquisition_process(self):
-        """
-        Continuously acquires data from sensors and updates the data buffer.
-        Runs in a separate thread.
-        """
-        try:
-            time.sleep(0.1)  # Initial delay before starting data acquisition
-            while not self.data_acquisition_stop_event.is_set():
-                for frame_num in range(self.sample_size):
-                    # Attempt to read data until successful or stop event is set
-                    while not self.data_acquisition_stop_event.is_set():
-                        time.sleep(0.005)  # Brief pause between read attempts
-                        data, dxl_comm_result, dxl_error = self.packet_handler.readTxRx(
-                            self.port_handler, 171, 85, 6)
-                        if dxl_comm_result == COMM_SUCCESS:
-                            break  # Exit the loop if data is successfully read
-
-                    if self.data_acquisition_stop_event.is_set():
-                        print("Data acquisition stopped.")
-                        return
-
-                    # Combine bytes to form integers
-                    bin_data_1 = int(data[1] | (data[2] << 8))
-                    bin_data_2 = int(data[4] | (data[5] << 8))
-
-                    # Convert to signed integers
-                    signed_value_1 = int.from_bytes(bin_data_1.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                    signed_value_2 = int.from_bytes(bin_data_2.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-
-                    # Update the data buffer
-                    if frame_num < len(self.data_buff[0]):
-                        self.data_buff[0][frame_num] = signed_value_1
-                        self.data_buff[1][frame_num] = signed_value_2
-                    else:
-                        print(f"Warning: Frame number {frame_num} exceeds buffer size.")
-
-                # Reset plotter's internal update counter and clear data
-                self.plotter.upd_cnt = 0
-                self.plotter.data_1.clear()
-
-        except Exception as e:
-            print(f"An error occurred in data acquisition: {e}")
-        finally:
-            print("Data acquisition process ended.")
-
-    def _plotting_process(self):
-        """
-        Handles the real-time plotting using the Plotter instance.
-        Runs in a separate thread.
-        """
-        try:
-            while not self.plotting_stop_event.is_set():
-                self.plotter.animate()
-                time.sleep(0.1)  # Adjust sleep time as needed
-        except Exception as e:
-            print(f"An error occurred during plotting: {e}")
-        finally:
-            print("Plotting process ended.")
-
-    def update_data_buffer(self, new_data: list) -> None:
-        """
-        Updates the data buffer with new data.
-    
-        Parameters:
-        new_data (list): New data to be added to the buffer.
-        """
-        for i, data_point in enumerate(new_data):
-            if i < len(self.data_buff):
-                self.data_buff[i].append(data_point)
-                self.data_buff[i].pop(0)  # Maintain buffer size
-            else:
-                print(f"Warning: Received more data points than buffer size for index {i}.")
+        plotter.animate()  # This will handle plt.show() in the main thread
+        print("Plotting stopped")
+        self.plotter_stop_event.set()  # Signal the plotter thread to stop when plotting ends
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         pass
@@ -1030,7 +930,6 @@ class Application():
         self.packet_handler = None
         self.serial_connection = None  # For keep serial.Serial
     
-
     def run(self):
         devices = DXL_device(dxl_id=self.dxl_id_devs, baudrate=self.baudrates, protocol_version=self.protocols)
         time.sleep(1)
@@ -1055,9 +954,9 @@ class Application():
                         plot_legend = ["Sensor 1", "Sensor 2"]
                         max_mins = [[-2000, +2000]]
                         sublots = [2]       
-                        plotter_manager = PlotterManager(packet_handler=devices.packet_handler, port_handler=self.port_handler, data_buff=data_buff, plot_legend=plot_legend, max_mins=max_mins, subplots=sublots)
+                        plotter_manager = PlotterManager(data=data_buff, labels=plot_legend, max_mins=max_mins, sublots=sublots)
                         # Start plotting and data acquisition
-                        plotter_manager.start_plotting()
+                        plotter_manager.start(packetHandler=devices.packet_handler, portHandler=devices.port_handler)
                         # Example runtime duration
                         try:
                             # Let it run for some time, e.g., 10 seconds
