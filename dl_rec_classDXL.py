@@ -728,6 +728,7 @@ class PlotterManager:
         while not stop_event.is_set():
             for frame_num in range(sample_size):
                 # Collect data from the device (sensor)
+                for 
                 while True:
                     time.sleep(0.005)
                     data, dxl_comm_result, dxl_error = packetHandler.readTxRx(portHandler, self.dxl_id, DX_SENSORS_DATA_FIRST, COUNT_BYTE_READ)
@@ -743,6 +744,7 @@ class PlotterManager:
 
                 # Update the data buffer
                 self.data[0][frame_num] = signed_value_1
+
                 self.data[1][frame_num] = signed_value_2
 
             # Signal the plotter to update
@@ -771,7 +773,7 @@ class PlotterManager:
 
 
 class Application:
-    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 9600,
+    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 115200,
         protocol_version: Optional[float] = 2.0, port_timeout: int = 100,
         sensor_id: Optional[int] = None, sensor_range: Optional[str] = None,
         filename: Optional[str] = None,
@@ -820,7 +822,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(60)
+                time.sleep(5)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
@@ -897,7 +899,7 @@ class Application:
         # Initialize data buffer and plot settings
         data_buff = [[None] * 1024 for _ in range(2)]  # Assuming two sensors
         plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff))]
-        max_mins = [[-2000, 2000] for _ in range(len(data_buff))]
+        max_mins = [[0, 4000] for _ in range(len(data_buff))]
         subplots = [2]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
@@ -951,7 +953,7 @@ def main(args: list):
     SENSOR_ID = 46           # Set to None to allow selection
     SENSOR_RANGE = "2"      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "writing"       # "writing" or "plotting"
+    MODE = "plotting"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
