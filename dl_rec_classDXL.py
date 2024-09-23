@@ -281,6 +281,8 @@ class Sensor:
         self.port_handler = port_handler
         self.packet_handler = packet_handler
 
+        self.flag_activate_sns = False
+
     def _read_data_elif(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
@@ -429,6 +431,7 @@ class Sensor:
                         self.sns_id = selected_id
                         self.sns_port = found_sns[selected_id]  # Corrected: Set the sensor port based on ID
                         print(f"Selected Sensor {self.sns_id} on {self.sns_port}.")
+                        self.flag_activate_sns = True
                         return True
                     else:
                         print("Selected Sensor ID is not valid.")
@@ -450,6 +453,7 @@ class Sensor:
             if self.sns_id == cur_sns_id:
                 self.sns_port = reg_port_sns_option
                 print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
+                self.flag_activate_sns = True
                 return True
             # if self.sns_id is None:
                 # Collect all found sensors
@@ -557,22 +561,14 @@ class Sensor:
 
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
-        
-        if self._find_sns_port():
-            if self._set_range():
-                if self._start_meas():
-                    # self._check_data_written()
-                    return True
-        return False
+        return self._find_sns_port() and self._set_range() and self._start_meas()
 
     def deactivate_sns_measure(self) -> bool:
-        """Activate measuring desiring sns"""
-        if self._find_sns_port():
-            if self._unset_range():
-                if self._stop_meas():
-                    # self._check_data_written()
-                    return True
-        return False
+        """Deactivate measuring desiring sns"""
+        # if self._find_sns_port():
+        if self.flag_activate_sns:
+            self.flag_activate_sns = False
+            return self._unset_range() and self._stop_meas()
 
     def read_sns_results_manual(self)-> list:
         """Start get data from regs desiring sns"""
@@ -676,7 +672,8 @@ class DataManager:
         return (f"Your Sensor has parameters: ID - {self.filename}")
 
 class PlotterManager:
-    def __init__(self, data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
+    def __init__(self, dxl_id: Optional[int], data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
+        self.dxl_id = dxl_id # 
         self.data = data  # Sensor data buffer
         self.labels = labels  # Labels for the plots
         self.max_mins = max_mins  # Min/Max values for the y-axis scaling
@@ -709,12 +706,16 @@ class PlotterManager:
         :param stop_event: Event to signal when to stop the process
         """
         time.sleep(0.1)
+
+        DX_SENSORS_DATA_FIRST = 85
+        COUNT_BYTE_READ = 6
+
         while not stop_event.is_set():
             for frame_num in range(sample_size):
                 # Collect data from the device (sensor)
                 while True:
                     time.sleep(0.005)
-                    data, dxl_comm_result, dxl_error = packetHandler.readTxRx(portHandler, 171, 85, 6)
+                    data, dxl_comm_result, dxl_error = packetHandler.readTxRx(portHandler, self.dxl_id, DX_SENSORS_DATA_FIRST, COUNT_BYTE_READ)
                     if dxl_comm_result == COMM_SUCCESS:
                         break
 
@@ -885,6 +886,7 @@ class Application:
 
         # Initialize PlotterManager
         self.plotter_manager = PlotterManager(
+            dxl_id=self.dxl_id_devs,
             data=data_buff,
             labels=plot_legend,
             max_mins=max_mins,
