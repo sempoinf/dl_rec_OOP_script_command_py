@@ -561,7 +561,7 @@ class Sensor:
 
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
-        return self._find_sns_port() and self._set_range() and self._start_meas()
+        return self._find_sns_port() and self._set_range() and self._start_meas() and self._check_data_written()
 
     def deactivate_sns_measure(self) -> bool:
         """Deactivate measuring desiring sns"""
@@ -588,6 +588,14 @@ class Sensor:
         print(f"Data taken {data_read}")
         return data_read
     
+    def _tryhard(self)-> None:
+        reg_value = 85
+        for i in range(6):
+            time.sleep(0.5)
+            # print(i)
+            data_val = self._read_data(register_id=reg_value + i, byte_count=1)
+            print(f"Value from {reg_value + i} {data_val}")
+
     def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
@@ -600,21 +608,28 @@ class Sensor:
             reg_value = 86
             # List to store data for the current iteration
             current_data = []
+
+            # self._tryhard()
+            # input()
+
             for num in self.sns_range:
-                time.sleep(0.5)
+                time.sleep(0.8)
+                # print(f"Range {num}")
                 # Read the status from the current register
+                # print(f"reg_status -- {reg_status}")
                 data_status = self._read_data(register_id=reg_status, byte_count=1)
                 # print(f"From register DX_SENSORS_DATA_{num} read: {data_status}")
                 # Define the register for the value based on the status register
-                reg_status = reg_value + count_bytes_res
-                # print(f"reg_status -- {reg_status}")
+                reg_status += count_bytes_res + 1
                 if data_status:
-                    time.sleep(0.2)
+                    time.sleep(0.3)
                     # If status is read successfully, read the value + append
-                    current_data.append(self._read_data(register_id=reg_value, byte_count=count_bytes_res))
+                    sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
+                    # print(sns_val)
+                    current_data.append(sns_val)
                 # Move to the next range's registers
-                reg_value = reg_status + 1
                 # print(f"reg_value -- {reg_value}")
+                reg_value += count_bytes_res + 1
             # If more than one digit in the range, group data into tuples
             if len(self.sns_range) > 1:
                 # Group data into tuples of pairs
@@ -651,10 +666,10 @@ class DataManager:
                     file.write(f"SENSORs Range is/are {sensor_range}\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
-                    file.write(f"Pair {index+1}: {pair[0]:>6}, {pair[1]:>6}\n")
+                    file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
                 else:
                     # print(f"Not tuples data at index {index+1}: {pair}")
-                    file.write(f"Just value tick {index+1}: {pair}\n")
+                    file.write(f"Just value tick {index+1}: {pair} mV\n")
             file.write("\nEND OF DATA\n\n")
 
     def verify_data(self):
@@ -805,8 +820,9 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                if self.mode == "write":
-                    self._write_mode()
+                time.sleep(60)
+                if self.mode == "writing":
+                    self._writing_mode()
                 elif self.mode == "plotting":
                     self._plotting_mode()
                 else:
@@ -851,12 +867,12 @@ class Application:
             packet_handler=self.devices.packet_handler
         )
 
-    def _write_mode(self):
+    def _writing_mode(self):
         """
-        Handles the 'write' mode: reads data from sensors and writes it to a file.
+        Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
-        print("Running in 'write' mode...")
-        res_sns = self.sensors.read_sns_results(count_of_measure=4)
+        print("Running in 'writing' mode...")
+        res_sns = self.sensors.read_sns_results(count_of_measure=30)
 
         if res_sns:
             self.data_manager = DataManager(filename=self.file_names)
@@ -932,10 +948,10 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = 22           # Set to None to allow selection
-    SENSOR_RANGE = "1"      # Replace with actual range configuration
+    SENSOR_ID = 46           # Set to None to allow selection
+    SENSOR_RANGE = "2"      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "write"       # "write" or "plotting"
+    MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
