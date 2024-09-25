@@ -2,6 +2,7 @@ import os
 import re
 import serial
 import serial.tools.list_ports
+#from serial.serialutil import SerialException  # Correct way to import SerialException
 from dynamixel_sdk import *
 from typing import List, Optional, Union, Any
 from enum import Enum
@@ -15,7 +16,6 @@ from rich import print as rprint
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QRadioButton, QPushButton, QListWidget, QListWidgetItem, QSpacerItem, QSizePolicy, QLabel, QFileDialog
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
-import wave, struct
 
 class config_dev():
 
@@ -651,7 +651,7 @@ class Sensor:
                 f"Sensor range - {self.sns_range}")
 
 class DataManager:
-    def __init__(self, filename="results_term_compens.txt"):
+    def __init__(self, filename: Optional[str] = None):
         self.filename = filename
 
     def write_data(self, sensor_id: Optional[int] = None, sensor_range: Optional[str] = None, data: Optional[list] = None): 
@@ -698,7 +698,7 @@ class PlotterManager:
         self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
         self.plotter = None  # Plotter instance to be initialized later
 
-    def start(self, packetHandler, portHandler, sample_size: int=1024):
+    def start(self, packetHandler, portHandler, total_sns_and_ranges: Optional[int], sample_size: int=1024):
         """
         Starts the data collection and plotting process.
         :param packetHandler: Communication handler for the device
@@ -707,47 +707,52 @@ class PlotterManager:
         """
         
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
-        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, sample_size, self.plotter_stop_event))
+        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, total_sns_and_ranges, sample_size, self.plotter_stop_event))
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
 
-    def plotter_proc(self, packetHandler, portHandler, sample_size: int, stop_event: Event):
+    def plotter_proc(self, packetHandler, portHandler, bytes_to_call: Optional[int], sample_size: Optional[int], stop_event: Event):
         """
         Background process to collect data from sensors.
         :param packetHandler: Communication handler
         :param portHandler: Port handler
+        :param bytes_to_call: Number of sensors (defines how many bytes to read)
         :param sample_size: Number of samples to collect per update
         :param stop_event: Event to signal when to stop the process
         """
         time.sleep(0.1)
-
-        DX_SENSORS_DATA_FIRST = 85
-        COUNT_BYTE_READ = 6
+        DX_SENSORS_DATA_FIRST = 85  # First register to read from
+        DEFAULT_BYTE_READ = 3
+        # COUNT_BYTE_READ = bytes_to_call * 3  # Each sensor needs 3 bytes (status + 2 data bytes)
 
         while not stop_event.is_set():
             for frame_num in range(sample_size):
-                # Collect data from the device (sensor)
-                for 
-                while True:
-                    time.sleep(0.005)
-                    data, dxl_comm_result, dxl_error = packetHandler.readTxRx(portHandler, self.dxl_id, DX_SENSORS_DATA_FIRST, COUNT_BYTE_READ)
-                    if dxl_comm_result == COMM_SUCCESS:
-                        break
+                sensor_data = []
+                for i in range(bytes_to_call):
+                    # Read data for each sensor based on bytes_to_call
+                    while True:
+                        time.sleep(0.005)
+                        start_address = DX_SENSORS_DATA_FIRST + (i * DEFAULT_BYTE_READ)  # Offset address based on sensor index
+                        data, dxl_comm_result, dxl_error = packetHandler.readTxRx(
+                    portHandler, self.dxl_id, start_address, DEFAULT_BYTE_READ)
+                        if dxl_comm_result == COMM_SUCCESS:
+                            break
 
-                # Process the raw data
-                bin_data_1 = int((data[1] | (data[2] << 8)))
-                bin_data_2 = int((data[4] | (data[5] << 8)))
+                    # Process the raw data (extracting status and 2-byte sensor value)
+                    status_byte = data[0]  # Status byte
+                    if status_byte is not None:  # Check if status is valid
+                        bin_data = int((data[1] | (data[2] << 8)))  # Merge two bytes into a single value
+                        # print(f"Bin_Data - {bin_data}")
+                        # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        # print(f"Signed value - {signed_value}")
+                        sensor_data.append(bin_data)
 
-                signed_value_1 = int.from_bytes(bin_data_1.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                signed_value_2 = int.from_bytes(bin_data_2.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                # Update the data buffer dynamically based on number of sensors
+                for idx, value in enumerate(sensor_data):
+                    self.data[idx][frame_num] = value
 
-                # Update the data buffer
-                self.data[0][frame_num] = signed_value_1
-
-                self.data[1][frame_num] = signed_value_2
-
-            # Signal the plotter to update
+            # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
 
     def visual_process(self, plotter: Plotter):
@@ -905,6 +910,7 @@ class Application:
         # Initialize PlotterManager
         self.plotter_manager = PlotterManager(
             dxl_id=self.dxl_id_devs,
+
             data=data_buff,
             labels=plot_legend,
             max_mins=max_mins,
@@ -917,6 +923,7 @@ class Application:
         self.plotter_manager.start(
             packetHandler=self.devices.packet_handler,
             portHandler=self.devices.port_handler,
+            total_sns_and_ranges= len(self.sns_ranges),
             sample_size=1024
         )
 
@@ -953,7 +960,7 @@ def main(args: list):
     SENSOR_ID = 46           # Set to None to allow selection
     SENSOR_RANGE = "2"      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "plotting"       # "writing" or "plotting"
+    MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
