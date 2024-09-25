@@ -481,15 +481,18 @@ class Sensor:
         # range_num_str = str(self.sns_range)
         reg_en_id = 60
         reg_en_id_r = 61
-        for index, sns in enumerate(self.sns_id):
-            for indey, range in enumerate(self.sns_range):
+
+        index = 0
+        for sns in self.sns_id:
+            for range in self.sns_range:
                 time.sleep(0.05)
                 data_en_sns = self._read_data(register_id=reg_en_id)
                 print(f"DX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
                 reg_en_id += 2
                 data_en_sns_r = self._read_data(register_id=reg_en_id_r)
-                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}")
+                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}\n")
                 reg_en_id_r += 2
+                index += 1
         data_status_meas = self._read_data(register_id=24)
         print(f"DX_MEAS_START_STOP - {data_status_meas}")
         return True
@@ -503,7 +506,7 @@ class Sensor:
         # if self._find_sns_port():
         if self.flag_activate_sns:
             self.flag_activate_sns = False
-            return self._unset_range() and self._stop_meas()
+            return self._unset_range() and self._stop_meas() and self._check_data_written()
 
     def read_sns_results_manual(self)-> list:
         """Start get data from regs desiring sns"""
@@ -543,7 +546,8 @@ class Sensor:
 
             # self._tryhard()
             # input()
-
+            
+            index = 1
             for sns in self.sns_id:
                 # List to store data for the current iteration
                 current_data = []
@@ -555,7 +559,7 @@ class Sensor:
                     # Read the status from the current register
                     # print(f"reg_status -- {reg_status}")
                     data_status = self._read_data(register_id=reg_status, byte_count=1)
-                    print(f"From register DX_SENSORS_DATA_{num} read: {data_status}")
+                    print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
                     # Define the register for the value based on the status register
                     reg_status += count_bytes_res + 1
                     if data_status:
@@ -567,6 +571,7 @@ class Sensor:
                         current_data.append(sns_val)
                     # Move to the next range's registers
                     reg_value += count_bytes_res + 1
+                    index += count_bytes_res + 1
                 # If more than one digit in the range, group data into tuples
                 if len(self.sns_range) > 1:
                     # Group data into tuples of pairs
