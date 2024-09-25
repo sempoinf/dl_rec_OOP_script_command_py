@@ -269,7 +269,7 @@ class DXL_device:
                 f"Port handler  - {self.port_handler} & Packet handler - {self.packet_handler}")
 
 class Sensor:
-    def __init__(self, sensor_id: Optional[int] = None, sensor_range: Optional[str] = None, 
+    def __init__(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, 
                  dxl_id_dev: Optional[int] = None, port_handler: Optional[Any] = None, 
                  packet_handler: Optional[Any] = None) -> None:
         if port_handler is None or packet_handler is None:
@@ -450,21 +450,21 @@ class Sensor:
         for reg_port_sns_option, name_port_sns_option  in zip(ports_sns.keys(), ports_sns.values()): 
             cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
             print(f"Name {name_port_sns_option} -> SNS_ID - {cur_sns_id}")
-            if self.sns_id == cur_sns_id:
+            if cur_sns_id in self.sns_id:
                 self.sns_port = reg_port_sns_option
                 print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
                 self.flag_activate_sns = True
-                return True
+                
             # if self.sns_id is None:
                 # Collect all found sensors
             if cur_sns_id not in found_sensors and cur_sns_id != 0:
                 found_sensors[cur_sns_id] = name_port_sns_option
                 # print(found_sensors)
 
-        if not self._choose_sns(found_sensors):
-            return False
-        else: 
+        if self._choose_sns(found_sensors) or self.flag_activate_sns:
             return True
+        else: 
+            return False
         
     def _set_range_binary(self, nums_sns: int=1) -> bool:
         """
@@ -780,7 +780,7 @@ class PlotterManager:
 class Application:
     def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 115200,
         protocol_version: Optional[float] = 2.0, port_timeout: int = 100,
-        sensor_id: Optional[int] = None, sensor_range: Optional[str] = None,
+        sensor_id: Optional[list] = None, sensor_range: Optional[list] = None,
         filename: Optional[str] = None,
         mode: Optional[str] = None) -> None:
         """
@@ -957,8 +957,8 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = 46           # Set to None to allow selection
-    SENSOR_RANGE = "2"      # Replace with actual range configuration
+    SENSOR_ID = [46]           # Set to None to allow selection
+    SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
     MODE = "writing"       # "writing" or "plotting"
 
