@@ -483,13 +483,12 @@ class Sensor:
         reg_en_id_r = 61
         for index, sns in enumerate(self.sns_id):
             for indey, range in enumerate(self.sns_range):
-                input
                 time.sleep(0.05)
                 data_en_sns = self._read_data(register_id=reg_en_id)
-                print(f"DX_ENABLE_SENSOR_ID_x_ID {data_en_sns}")
+                print(f"DX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
                 reg_en_id += 2
                 data_en_sns_r = self._read_data(register_id=reg_en_id_r)
-                print(f"DX_ENABLE_SENSOR_ID_x_RANGE {data_en_sns_r}")
+                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}")
                 reg_en_id_r += 2
         data_status_meas = self._read_data(register_id=24)
         print(f"DX_MEAS_START_STOP - {data_status_meas}")
@@ -554,7 +553,7 @@ class Sensor:
                     time.sleep(0.8)
                     print(f"Range {num}")
                     # Read the status from the current register
-                    print(f"reg_status -- {reg_status}")
+                    # print(f"reg_status -- {reg_status}")
                     data_status = self._read_data(register_id=reg_status, byte_count=1)
                     print(f"From register DX_SENSORS_DATA_{num} read: {data_status}")
                     # Define the register for the value based on the status register
@@ -562,9 +561,9 @@ class Sensor:
                     if data_status:
                         time.sleep(0.2)
                         # If status is read successfully, read the value + append
-                        print(f"reg_value -- {reg_value}")
+                        # print(f"reg_value -- {reg_value}")
                         sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
-                        print(sns_val)
+                        # print(sns_val)
                         current_data.append(sns_val)
                     # Move to the next range's registers
                     reg_value += count_bytes_res + 1
@@ -575,7 +574,7 @@ class Sensor:
                 else:
                     # Append single values to the list
                     data_read.extend(current_data)
-                print(f"Sensor value all range: {data_read}")
+                print(f"Sensor value all range: {current_data}")
              
         print(f"Data taken: {data_read}")
         return data_read
@@ -591,7 +590,7 @@ class DataManager:
     def __init__(self, filename: Optional[str] = None):
         self.filename = filename
 
-    def write_data(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, data: Optional[list] = None): 
+    def write_data(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, count_of_measure: Optional[int] = 1, data: Optional[list] = None): 
         """Write sensor data to a file."""
         file_exists = os.path.isfile(self.filename)
         with open(self.filename, 'a') as file:
@@ -601,6 +600,7 @@ class DataManager:
                 if index == 0:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
+                    file.write(f"Count of measure - {count_of_measure}\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
@@ -816,13 +816,15 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        res_sns = self.sensors.read_sns_results(count_of_measure=1)
+        COUNT_MEASURE = 1
+        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
         if res_sns:
             self.data_manager = DataManager(filename=self.file_names)
             self.data_manager.write_data(
                 sensor_id=self.sensors.sns_id,
                 sensor_range=self.sensors.sns_range,
+                count_of_measure = COUNT_MEASURE,
                 data=res_sns
             )
 

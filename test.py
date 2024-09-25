@@ -13,9 +13,11 @@ def main(args: list):
     FILENAME = "results_term_compens.txt"
     MODE = "writing"       # "writing" or "plotting"
 
-    app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
-    app.run()
+    sns_range = [1, 2]
+
+    # app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
+    # app.run()
 
 if __name__ == '__main__':
     main(sys.argv)
