@@ -560,59 +560,58 @@ class Sensor:
         # nums of itterarion от self.range
         for pair_n in range(count_of_measure):
             # Initialize register addresses
-            reg_status = 85
-            reg_value = reg_status+1
+            reg_status = 84
+            reg_value = 85
+
+            # Read the status from the current register
+            # print(f"reg_status start sns -- {reg_status}")
+            index = 1
+            data_status = self._read_data(register_id=reg_status, byte_count=1)
+            print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
 
             # self._tryhard()
             # input()
 
-            
-            index = 1
-            for sns in self.sns_id:
-                # List to store data for the current iteration
-                current_data = []
-
-                print(f"Sensor {sns}")
-
-                # Read the status from the current register
-                print(f"reg_status start sns -- {reg_status}")
-                data_status = self._read_data(register_id=reg_status, byte_count=1)
-                print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
-                
-                for num in self.sns_range:
+            # If status is read successfully, read the value + append
+            if data_status:
+                for sns in self.sns_id:
                     time.sleep(0.8)
-                    print(f"Range {num}")
-                    
-                    if data_status:
+                    # List to store data for the current iteration
+                    current_data = []
+                    print(f"Sensor {sns}")
+                    for num in self.sns_range:
                         time.sleep(0.2)
-                        # If status is read successfully, read the value + append
-                        # print(f"reg_value -- {reg_value}")
-                        sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
+                        # print(f"Range {num}")
+                        # sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
                         # print(sns_val)
-                        bin_data = int((sns_val[0] | (sns_val[1] << 8)))
+                        # bin_data = int((sns_val[0] | (sns_val[1] << 8)))
                         # print(bin_data)
-                        signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                         # print(signed_value)
-                        current_data.append(signed_value)
-                    # Move to the next range's registers
-                    reg_value += count_bytes_res
-                    index += count_bytes_res + 1
+                        # print(f"reg_value Range {num} - {reg_value}")
+                        sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
+                        # print(sns_val)
+                        current_data.append(sns_val)
+                        # Move to the next range's registers
+                        reg_value += count_bytes_res
+                        # print(reg_value)
 
-                # Define the register for the value based on the status register
-                reg_status = reg_value
-                reg_value += 1
-                print(f"reg_value after all ranges -- {reg_value}")
-                
-                # If more than one digit in the range, group data into tuples
-                if len(self.sns_range) > 1:
-                    # Group data into tuples of pairs
-                    data_read.extend(tuple(current_data[i:i+2]) for i in range(0, len(current_data), 2))
-                else:
-                    # Append single values to the list
-                    data_read.extend(current_data)
-                print(f"Sensor value all range: {current_data}")
-                input()
-
+                    # Define the register for the value based on the status register
+                    # index += count_bytes_res + 1
+                    # reg_status = reg_value
+                    # reg_value += 1
+                    # print(f"reg_value after all ranges -- {reg_value}")
+                    
+                    # If more than one digit in the range, group data into tuples
+                    if len(self.sns_range) > 1:
+                        # Group data into tuples of pairs
+                        data_read.extend(tuple(current_data[i:i+2]) for i in range(0, len(current_data), 2))
+                    else:
+                        # Append single values to the list
+                        data_read.extend(current_data)
+                    print(f"Sensor value all range: {current_data}")
+                    # input()
+                    
         print(f"Data taken: {data_read}")
         return data_read
 
@@ -854,28 +853,25 @@ class Application:
         """
         print("Running in 'writing' mode...")
         COUNT_MEASURE = 10
-        for num in range(2):
-            # if num == 1:
-                # input(f"Put into a water!")
 
-            # time.sleep(20)
-            res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+        # time.sleep(20)
+        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
-            if res_sns:
-                self.data_manager = DataManager(filename=self.file_names)
-                self.data_manager.write_data(
-                    sensor_id=self.sensors.sns_id,
-                    sensor_range=self.sensors.sns_range,
-                    count_of_measure = COUNT_MEASURE,
-                    data=res_sns
-                )
+        if res_sns:
+            self.data_manager = DataManager(filename=self.file_names)
+            self.data_manager.write_data(
+            sensor_id=self.sensors.sns_id,
+            sensor_range=self.sensors.sns_range,
+            count_of_measure = COUNT_MEASURE,
+            data=res_sns
+            )
 
-                if self.data_manager.verify_data():
-                    print("Data successfully written and verified.")
-                else:
-                    print("Data verification failed.")
+            if self.data_manager.verify_data():
+                print("Data successfully written and verified.")
             else:
-                print("No sensor results to write.")
+                print("Data verification failed.")
+        else:
+            print("No sensor results to write.")
             
 
     def _plotting_mode(self):
