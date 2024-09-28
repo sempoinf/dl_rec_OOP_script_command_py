@@ -284,8 +284,7 @@ class Sensor:
         # Hidden parameters
         self.sns_port = [] # mb dont need
         self.flag_activate_sns = {}
-
-            
+       
     def _read_data(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
@@ -562,10 +561,11 @@ class Sensor:
         for pair_n in range(count_of_measure):
             # Initialize register addresses
             reg_status = 85
-            reg_value = 86
+            reg_value = reg_status+1
 
             # self._tryhard()
             # input()
+
             
             index = 1
             for sns in self.sns_id:
@@ -573,25 +573,36 @@ class Sensor:
                 current_data = []
 
                 print(f"Sensor {sns}")
+
+                # Read the status from the current register
+                print(f"reg_status start sns -- {reg_status}")
+                data_status = self._read_data(register_id=reg_status, byte_count=1)
+                print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
+                
                 for num in self.sns_range:
                     time.sleep(0.8)
                     print(f"Range {num}")
-                    # Read the status from the current register
-                    # print(f"reg_status -- {reg_status}")
-                    data_status = self._read_data(register_id=reg_status, byte_count=1)
-                    print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
-                    # Define the register for the value based on the status register
-                    reg_status += count_bytes_res + 1
+                    
                     if data_status:
                         time.sleep(0.2)
                         # If status is read successfully, read the value + append
                         # print(f"reg_value -- {reg_value}")
-                        sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
+                        sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
                         # print(sns_val)
-                        current_data.append(sns_val)
+                        bin_data = int((sns_val[0] | (sns_val[1] << 8)))
+                        # print(bin_data)
+                        signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        # print(signed_value)
+                        current_data.append(signed_value)
                     # Move to the next range's registers
-                    reg_value += count_bytes_res + 1
+                    reg_value += count_bytes_res
                     index += count_bytes_res + 1
+
+                # Define the register for the value based on the status register
+                reg_status = reg_value
+                reg_value += 1
+                print(f"reg_value after all ranges -- {reg_value}")
+                
                 # If more than one digit in the range, group data into tuples
                 if len(self.sns_range) > 1:
                     # Group data into tuples of pairs
@@ -600,7 +611,8 @@ class Sensor:
                     # Append single values to the list
                     data_read.extend(current_data)
                 print(f"Sensor value all range: {current_data}")
-             
+                input()
+
         print(f"Data taken: {data_read}")
         return data_read
 
@@ -626,7 +638,7 @@ class DataManager:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
-                    # file.write(f"WATER!!!!\n")
+                    # file.write(f"Put it down!!!!\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
@@ -789,7 +801,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(5)
+                time.sleep(10)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
@@ -843,6 +855,10 @@ class Application:
         print("Running in 'writing' mode...")
         COUNT_MEASURE = 10
         for num in range(2):
+            # if num == 1:
+                # input(f"Put into a water!")
+
+            # time.sleep(20)
             res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
             if res_sns:
@@ -860,7 +876,7 @@ class Application:
                     print("Data verification failed.")
             else:
                 print("No sensor results to write.")
-            input(f"Put into a water!")
+            
 
     def _plotting_mode(self):
         """
@@ -913,9 +929,7 @@ class Application:
                 print("Serial port closed successfully.")
             except Exception as e:
                 print(f"Error closing serial port: {e}")
-
-
-    
+   
 def main(args: list):
     # Define configurations
     DXL_ID = 171            # Replace with your actual device ID
@@ -923,8 +937,8 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [46]           # Set to None to allow selection
-    SENSOR_RANGE = [1]      # Replace with actual range configuration
+    SENSOR_ID = [3, 46]           # Set to None to allow selection
+    SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
     MODE = "writing"       # "writing" or "plotting"
 
