@@ -277,12 +277,14 @@ class Sensor:
     
         self.sns_id = sensor_id
         self.sns_range = sensor_range
-        self.sns_port = [] # mb dont need
         self.dxl_id_device = dxl_id_dev
         self.port_handler = port_handler
         self.packet_handler = packet_handler
 
-        self.flag_activate_sns = False
+        # Hidden parameters
+        self.sns_port = [] # mb dont need
+        self.flag_activate_sns = {}
+
             
     def _read_data(self, register_id: int, byte_count: int=1) -> int:
         """
@@ -368,69 +370,87 @@ class Sensor:
                 print(f"Communication error on register {register_id}: {comm_error_msg}")
             else:
                 return True
+    
+    def _rewrite_list_sns_id(self):
+        """Update sns_id to include only active sensors."""
+        # Filter sns_id based on active sensors in flag_activate_sns
+        self.sns_id = [sensor_id for sensor_id, status in self.flag_activate_sns.items() if status]
 
-    def _choose_sns(self,found_sns: dict) -> bool:
+    def _choose_sns(self, found_sns: dict) -> bool:
         """Prompt user to select a sensor from the found sensors."""
-        if found_sns:
-            print("Sensors found:")
-            for sns_id, port_name in found_sns.items():
-                print(f"Sensor ID: {sns_id} on {port_name}")
-            
-            if not self.flag_activate_sns:
-                self.sns_id = [] # # If no sensor is found, this will remain empty
-            # self.sns_port = []  # List to store the ports of selected sensors # mb dont need
-
-            while True:
-                selected_id = input("Enter the Sensor ID you want to select: ")
-                if selected_id.strip() == '':
-                    print("No sensor selected. Skipping sensor selection.")
-                    return True
-                try:
-                    sensor_ids = [int(id.strip()) for id in selected_id.split(',')]
-                    print("Selected Sensor IDs:", sensor_ids)
-                    for sns_id in sensor_ids:
-                        if sns_id in found_sns:
-                            self.sns_id.append(sns_id)  # Add sensor ID to the list
-                            self.sns_port.append(found_sns[sns_id])  # Add corresponding port
-                            print(f"Selected Sensor {sns_id} on {found_sns[sns_id]}.")
-                            self.flag_activate_sns = True
-                        else:
-                            print(f"Sensor ID {sns_id} is not valid.")
-                    if self.flag_activate_sns:
-                        return True  # If any sensor was activated, return True
-                    else:
-                        print("No valid sensor selected. Please try again.")
-                except ValueError:
-                    print("Invalid input. Please enter numeric Sensor IDs.")
-        else:
+        if not found_sns:
             print("No sensors found.")
-        return False  # Return False if no sensors are available
+            return False
 
-    def _find_sns_port(self):
+        print("Sensors found:")
+        for sns_id, port_name in found_sns.items():
+            print(f"Sensor ID: {sns_id} on {port_name}")
+
+        self.sns_id = []  # Reset sns_id list
+
+        while True:
+            selected_id = input("Enter the Sensor ID you want to select (comma-separated), or press Enter to skip: ")
+        
+            if selected_id.strip() == '':
+                print("No sensor selected. Skipping sensor selection.")
+                return True
+
+            try:
+                sensor_ids = [int(id.strip()) for id in selected_id.split(',')]
+                print("Selected Sensor IDs:", sensor_ids)
+
+                # Process each selected sensor ID
+                for sns_id in sensor_ids:
+                    if sns_id in found_sns:
+                        self.sns_id.append(sns_id)  # Add sensor ID to the list
+                        print(f"Selected Sensor {sns_id} on {found_sns[sns_id]}.")
+                        self.flag_activate_sns[sns_id] = True  # Mark sensor as active
+                    else:
+                        print(f"Sensor ID {sns_id} is not valid.")
+            
+                # Exit loop if any valid sensor was selected
+                if self.sns_id:
+                    return True
+                else:
+                    print("No valid sensor selected. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter numeric Sensor IDs.")
+
+    def _find_sns_port(self) -> bool:
         """Find the port where the sensor with the desired ID is connected."""
-        print(f"Checking where sensors is connected.")
+        print("Checking where sensors are connected.")
+    
         found_sensors = {}
-        # Port related constants
-        ports_sns = {37:"Port_1", 39:"Port_2", 41:"Port_3", 43:"Port_4"}
-        for reg_port_sns_option, name_port_sns_option in zip(ports_sns.keys(), ports_sns.values()): 
+        self.flag_activate_sns = {sns: False for sns in self.sns_id}  # Initialize all sensors as inactive
+        self.sns_port = []  # Reset sensor port list
+
+        # Define available ports and register addresses for sensor IDs
+        ports_sns = {37: "Port_1", 39: "Port_2", 41: "Port_3", 43: "Port_4"}
+        
+        # Scan ports to find connected sensors
+        for reg_port_sns_option, name_port_sns_option in ports_sns.items():
             cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
-            print(f"Name {name_port_sns_option} -> SNS_ID - {cur_sns_id}")
+            print(f"Checking {name_port_sns_option} -> Found Sensor ID: {cur_sns_id}")
+
+            # If sensor is found on the port, activate and record it
             if cur_sns_id in self.sns_id:
                 self.sns_port.append(reg_port_sns_option)
                 print(f"Sensor {cur_sns_id} found on {name_port_sns_option}.")
-                self.flag_activate_sns = True
-                # check if all sns in list are on Ports?
-                
-            # Collect all found sensors
-            if cur_sns_id not in found_sensors and cur_sns_id not in self.sns_id and cur_sns_id != 0:
+                self.flag_activate_sns[cur_sns_id] = True
+            elif cur_sns_id != 0:
                 found_sensors[cur_sns_id] = name_port_sns_option
-                # print(found_sensors)
-        # print(found_sensors)
-        if self._choose_sns(found_sensors) or self.flag_activate_sns:
-            return True
-        else: 
-            return False
-            
+                
+        # Allow user to select from found sensors if necessary
+        if found_sensors and not self.sns_id:
+            if not self._choose_sns(found_sensors):
+                return False
+
+        # Update sns_id to only include active sensors
+        self._rewrite_list_sns_id()
+
+        # Return True if at least one sensor is active
+        return any(self.flag_activate_sns.values())
+
     def _set_range(self) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
@@ -606,6 +626,7 @@ class DataManager:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
+                    # file.write(f"WATER!!!!\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
@@ -619,7 +640,6 @@ class DataManager:
         if not os.path.isfile(self.filename):
             return False
         with open(self.filename, 'r') as file:
-            # print(f"Why?")
             return file.readlines()[-2].strip() == "END OF DATA"
         
     def __call__(self, *args: Any, **kwds: Any) -> Any:
@@ -821,24 +841,26 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 1
-        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+        COUNT_MEASURE = 10
+        for num in range(2):
+            res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
-        if res_sns:
-            self.data_manager = DataManager(filename=self.file_names)
-            self.data_manager.write_data(
-                sensor_id=self.sensors.sns_id,
-                sensor_range=self.sensors.sns_range,
-                count_of_measure = COUNT_MEASURE,
-                data=res_sns
-            )
+            if res_sns:
+                self.data_manager = DataManager(filename=self.file_names)
+                self.data_manager.write_data(
+                    sensor_id=self.sensors.sns_id,
+                    sensor_range=self.sensors.sns_range,
+                    count_of_measure = COUNT_MEASURE,
+                    data=res_sns
+                )
 
-            if self.data_manager.verify_data():
-                print("Data successfully written and verified.")
+                if self.data_manager.verify_data():
+                    print("Data successfully written and verified.")
+                else:
+                    print("Data verification failed.")
             else:
-                print("Data verification failed.")
-        else:
-            print("No sensor results to write.")
+                print("No sensor results to write.")
+            input(f"Put into a water!")
 
     def _plotting_mode(self):
         """
@@ -901,8 +923,8 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [3, 46]           # Set to None to allow selection
-    SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
+    SENSOR_ID = [46]           # Set to None to allow selection
+    SENSOR_RANGE = [1]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
     MODE = "writing"       # "writing" or "plotting"
 
