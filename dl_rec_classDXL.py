@@ -18,7 +18,6 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
 class config_dev():
-
     def __init__(self) -> None:
         self.devices_list = []
 
@@ -556,24 +555,20 @@ class Sensor:
     def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
+        # Read the status from the current register
+        REG_STATUS = 84
+        # print(f"reg_status start sns -- {reg_status}")
+
+        data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+        print(f"From register DX_SENSORS_STATUS read: {data_status}")
         # range_num_str = str(self.sns_range)
         # nums of itterarion от self.range
-        for pair_n in range(count_of_measure):
-            # Initialize register addresses
-            reg_status = 84
-            reg_value = 85
+        if data_status:
+            for pair_n in range(count_of_measure):
+                # Initialize register addresses
+                reg_value = 85
 
-            # Read the status from the current register
-            # print(f"reg_status start sns -- {reg_status}")
-            index = 1
-            data_status = self._read_data(register_id=reg_status, byte_count=1)
-            print(f"From register DX_SENSORS_DATA_{index} read: {data_status}")
-
-            # self._tryhard()
-            # input()
-
-            # If status is read successfully, read the value + append
-            if data_status:
+                # If status is read successfully, read the value + append
                 for sns in self.sns_id:
                     time.sleep(0.8)
                     # List to store data for the current iteration
@@ -588,19 +583,14 @@ class Sensor:
                         # print(bin_data)
                         # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                         # print(signed_value)
-                        # print(f"reg_value Range {num} - {reg_value}")
+                        print(f"reg_value Range {num} - {reg_value}")
                         sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
                         # print(sns_val)
                         current_data.append(sns_val)
+                        # Define the register for the value based on the status register
                         # Move to the next range's registers
                         reg_value += count_bytes_res
                         # print(reg_value)
-
-                    # Define the register for the value based on the status register
-                    # index += count_bytes_res + 1
-                    # reg_status = reg_value
-                    # reg_value += 1
-                    # print(f"reg_value after all ranges -- {reg_value}")
                     
                     # If more than one digit in the range, group data into tuples
                     if len(self.sns_range) > 1:
@@ -637,7 +627,6 @@ class DataManager:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
-                    # file.write(f"Put it down!!!!\n")
                 # If tuples in list
                 if isinstance(pair, tuple) and len(pair) == 2:
                     file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
@@ -671,59 +660,93 @@ class PlotterManager:
         self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
         self.plotter = None  # Plotter instance to be initialized later
 
-    def start(self, packetHandler, portHandler, total_sns_and_ranges: Optional[int], sample_size: int=1024):
+    def start(self, packetHandler, portHandler, all_sns: Optional[int], all_ranges: Optional[int], sample_size: int=1024):
         """
         Starts the data collection and plotting process.
         :param packetHandler: Communication handler for the device
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-        
+        # print(f"Кол-во Датчик - {all_sns}")
+        # print(f"Кол-во Рангес - {all_ranges}")
+        # input()
+
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
-        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, total_sns_and_ranges, sample_size, self.plotter_stop_event))
+        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, all_sns, all_ranges, sample_size, self.plotter_stop_event))
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
 
-    def plotter_proc(self, packetHandler, portHandler, bytes_to_call: Optional[int], sample_size: Optional[int], stop_event: Event):
+    def _read_data_sns(self, packet_handler, port_handler, register_id: int, byte_count: int=1) -> int:
+        """
+        Reads a specified number of bytes from a given register.
+
+        Parameters:
+        register_id (int): The register ID from which to read data.
+        byte_count (int): The number of bytes to read (1, 2, or 4).
+
+        Returns:
+        int: The data read from the register.
+        """
+        while True:
+            time.sleep(0.05)
+            match byte_count:
+                case 1:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read1ByteTxRx(port_handler, self.dxl_id, register_id)
+                case 2:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read2ByteTxRx(port_handler, self.dxl_id, register_id)
+                case 4:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read4ByteTxRx(port_handler, self.dxl_id, register_id)
+                case default:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.readTxRx(port_handler, self.dxl_id, register_id, byte_count)
+        
+            if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
+                comm_error_msg = packet_handler.getTxRxResult(dxl_comm_result)
+                print(f"Communication error on register {register_id}: {comm_error_msg}")
+            else:
+                return data_from_reg
+        
+
+    def plotter_proc(self, packetHandler, portHandler, snss: Optional[list[int]], ranges: Optional[list[int]], sample_size: Optional[int], stop_event: Event):
         """
         Background process to collect data from sensors.
         :param packetHandler: Communication handler
         :param portHandler: Port handler
-        :param bytes_to_call: Number of sensors (defines how many bytes to read)
+        :param snss: List of sensors (defines how many sensors to read from)
+        :param ranges: List of ranges for each sensor
         :param sample_size: Number of samples to collect per update
         :param stop_event: Event to signal when to stop the process
         """
         time.sleep(0.1)
         DX_SENSORS_DATA_FIRST = 85  # First register to read from
-        DEFAULT_BYTE_READ = 3
-        # COUNT_BYTE_READ = bytes_to_call * 3  # Each sensor needs 3 bytes (status + 2 data bytes)
+        DEFAULT_BYTE_READ = 2
 
         while not stop_event.is_set():
+            # rewrite in normal way
             for frame_num in range(sample_size):
-                sensor_data = []
-                for i in range(bytes_to_call):
-                    # Read data for each sensor based on bytes_to_call
-                    while True:
-                        time.sleep(0.005)
-                        start_address = DX_SENSORS_DATA_FIRST + (i * DEFAULT_BYTE_READ)  # Offset address based on sensor index
-                        data, dxl_comm_result, dxl_error = packetHandler.readTxRx(
-                    portHandler, self.dxl_id, start_address, DEFAULT_BYTE_READ)
-                        if dxl_comm_result == COMM_SUCCESS:
-                            break
-
-                    # Process the raw data (extracting status and 2-byte sensor value)
-                    status_byte = data[0]  # Status byte
-                    if status_byte is not None:  # Check if status is valid
-                        bin_data = int((data[1] | (data[2] << 8)))  # Merge two bytes into a single value
-                        # print(f"Bin_Data - {bin_data}")
-                        # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                        # print(f"Signed value - {signed_value}")
-                        sensor_data.append(bin_data)
-
+                index = 0
+                for sns in range(len(snss)):
+                    sensor_data = []
+                    for rnge in range(len(ranges)): 
+                        start_address = DX_SENSORS_DATA_FIRST + (index * DEFAULT_BYTE_READ)
+                        # Read data for each sensor based on bytes_to_call
+                        data = self._read_data_sns(packet_handler=packetHandler, port_handler=portHandler, register_id=start_address, byte_count=DEFAULT_BYTE_READ)
+                        if isinstance(data, list) and len(data) >= 2:
+                        # Process the raw data (extracting status and 2-byte sensor value)
+                            bin_data = int((data[0] | (data[1] << 8)))  # Merge two bytes into a single value
+                            signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                    else:
+                        signed_value = data  # Handle case where data is not a list or invalid
+                        index += 1
+                        sensor_data[ranges[rnge]] = signed_value
+                    # print(f"Sensor {sns} data: {sensor_data}")
+                    # print(sensor_data)
+                # print(f"Data from all sns and ranges: {sensor_data}")
                 # Update the data buffer dynamically based on number of sensors
-                for idx, value in enumerate(sensor_data):
-                    self.data[idx][frame_num] = value
+                
+                    for rng, value in enumerate(sensor_data):
+                        # self.data[rng][frame_num] = value
+                        self.data[snss[sns]][frame_num] = value
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
@@ -865,7 +888,6 @@ class Application:
             count_of_measure = COUNT_MEASURE,
             data=res_sns
             )
-
             if self.data_manager.verify_data():
                 print("Data successfully written and verified.")
             else:
@@ -901,7 +923,8 @@ class Application:
         self.plotter_manager.start(
             packetHandler=self.devices.packet_handler,
             portHandler=self.devices.port_handler,
-            total_sns_and_ranges= len(self.sns_ranges),
+            all_sns=self.sns_ids,
+            all_ranges=self.sns_ranges,
             sample_size=1024
         )
 
@@ -933,10 +956,10 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [3, 46]           # Set to None to allow selection
+    SENSOR_ID = [46]           # Set to None to allow selection
     SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "writing"       # "writing" or "plotting"
+    MODE = "plotting"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
