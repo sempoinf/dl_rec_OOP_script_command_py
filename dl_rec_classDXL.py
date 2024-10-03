@@ -628,10 +628,10 @@ class DataManager:
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
                 # If tuples in list
-                if isinstance(pair, tuple) and len(pair) == 2:
-                    file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
+                if isinstance(pair, tuple):
+                    formatted_values = ', '.join([f"{value:>6} mV" for value in pair])
+                    file.write(f"Index values - {index+1}: {formatted_values}\n")
                 else:
-                    # print(f"Not tuples data at index {index+1}: {pair}")
                     file.write(f"Just value tick {index+1}: {pair} mV\n")
             file.write("\nEND OF DATA\n\n")
 
@@ -667,9 +667,6 @@ class PlotterManager:
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-        # print(f"Кол-во Датчик - {all_sns}")
-        # print(f"Кол-во Рангес - {all_ranges}")
-        # input()
 
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, all_sns, all_ranges, sample_size, self.plotter_stop_event))
@@ -737,7 +734,7 @@ class PlotterManager:
                             signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                     else:
                         signed_value = data  # Handle case where data is not a list or invalid
-                        sensor_data.append(signed_value[index])
+                        sensor_data.append(signed_value)
                         index += 1
                     # print(f"Sensor {sns} data: {sensor_data}")
                     # print(sensor_data)
@@ -745,7 +742,7 @@ class PlotterManager:
                 # Update the data buffer dynamically based on number of sensors
                 
                     for rng_index, value in enumerate(sensor_data):
-                        data[sns][rng_index][frame_num] = value
+                        self.data[sns][rng_index][frame_num] = value
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
@@ -875,8 +872,6 @@ class Application:
         """
         print("Running in 'writing' mode...")
         COUNT_MEASURE = 10
-
-        # time.sleep(20)
         res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
         if res_sns:
@@ -894,23 +889,24 @@ class Application:
         else:
             print("No sensor results to write.")
             
-
     def _plotting_mode(self):
         """
         Handles the 'plotting' mode: collects sensor data and visualizes it.
         """
         print("Running in 'plotting' mode...")
         # Initialize data buffer and plot settings
-        data_buff = [[None] * 1024 for _ in range(2)]  # Assuming two sensors
-        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff))]
-        max_mins = [[0, 4000] for _ in range(len(data_buff))]
-        subplots = [2]  # Adjust based on the number of sensors or requirements
+        data_buff_sns = [[None] * 1024 for _, _ in enumerate(self.sns_ids)]
+        # for all ranges in one sns
+        data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
+
+        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns))]
+        max_mins = [[500, 3500] for _ in range(len(data_buff_sns))]
+        subplots = [len(self.sns_ids)]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
         self.plotter_manager = PlotterManager(
             dxl_id=self.dxl_id_devs,
-
-            data=data_buff,
+            data=data_buff_sns,
             labels=plot_legend,
             max_mins=max_mins,
             # show_legend=True,
@@ -958,7 +954,7 @@ def main(args: list):
     SENSOR_ID = [46]           # Set to None to allow selection
     SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "plotting"       # "writing" or "plotting"
+    MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
