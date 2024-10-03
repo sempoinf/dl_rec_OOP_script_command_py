@@ -725,9 +725,9 @@ class PlotterManager:
             # rewrite in normal way
             for frame_num in range(sample_size):
                 index = 0
-                for sns in range(len(snss)):
+                for sns_index, sns in enumerate(snss):
                     sensor_data = []
-                    for rnge in range(len(ranges)): 
+                    for rnge_index, rnge in enumerate(ranges):
                         start_address = DX_SENSORS_DATA_FIRST + (index * DEFAULT_BYTE_READ)
                         # Read data for each sensor based on bytes_to_call
                         data = self._read_data_sns(packet_handler=packetHandler, port_handler=portHandler, register_id=start_address, byte_count=DEFAULT_BYTE_READ)
@@ -737,16 +737,15 @@ class PlotterManager:
                             signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                     else:
                         signed_value = data  # Handle case where data is not a list or invalid
+                        sensor_data.append(signed_value[index])
                         index += 1
-                        sensor_data[ranges[rnge]] = signed_value
                     # print(f"Sensor {sns} data: {sensor_data}")
                     # print(sensor_data)
                 # print(f"Data from all sns and ranges: {sensor_data}")
                 # Update the data buffer dynamically based on number of sensors
                 
-                    for rng, value in enumerate(sensor_data):
-                        # self.data[rng][frame_num] = value
-                        self.data[snss[sns]][frame_num] = value
+                    for rng_index, value in enumerate(sensor_data):
+                        data[sns][rng_index][frame_num] = value
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
