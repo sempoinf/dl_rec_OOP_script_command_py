@@ -724,7 +724,7 @@ class PlotterManager:
             for frame_num in range(sample_size):
                 index = 0
                 for sns_index, sns in enumerate(snss):
-                    sensor_data = []
+                    data_buff_r = {}
                     for rnge_index, rnge in enumerate(ranges):
                         start_address = DX_SENSORS_DATA_FIRST + (index * DEFAULT_BYTE_READ)
                         # Read data for each sensor based on bytes_to_call
@@ -736,14 +736,11 @@ class PlotterManager:
                                 signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                         else:
                             signed_value = data  # Handle case where data is not a list or invalid
-                        sensor_data.append(signed_value)
+                        data_buff_r[rnge] = signed_value
                         index += 1
-                    # print(f"Sensor {sns} data: {sensor_data}")
-                    # print(sensor_data)
-                # print(f"Data from all sns and ranges: {sensor_data}")
                 # Update the data buffer dynamically based on number of sensors
-                    for rng_index, value in enumerate(sensor_data):
-                        self.data[sns][rng_index][frame_num] = value
+                        for rnge, value in data_buff_r.items():
+                            self.data[sns][rnge][frame_num] = value
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
@@ -820,7 +817,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(70)
+                time.sleep(10)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
@@ -896,18 +893,20 @@ class Application:
         """
         print("Running in 'plotting' mode...")
         # Initialize data buffer and plot settings
-        data_buff_sns = [[None] * 1024 for _, _ in enumerate(self.sns_ids)]
+        sample_size = 1024
+        data_buff_sns_r = {sns: {rnge: [None] * sample_size for rnge in self.sns_ranges} for sns in self.sns_ids}
+        # data_buff_sns = [[None] * 1024 for _, _ in enumerate(self.sns_ids)]
         # for all ranges in one sns
-        data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
+        # data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
 
-        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns))]
-        max_mins = [[500, 3500] for _ in range(len(data_buff_sns))]
+        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns_r))]
+        max_mins = [[100, 3500] for _ in range(len(data_buff_sns_r))]
         subplots = [len(self.sns_ids)]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
         self.plotter_manager = PlotterManager(
             dxl_id=self.dxl_id_devs,
-            data=data_buff_sns,
+            data=data_buff_sns_r,
             labels=plot_legend,
             max_mins=max_mins,
             # show_legend=True,
@@ -921,7 +920,7 @@ class Application:
             portHandler=self.devices.port_handler,
             all_sns=self.sns_ids,
             all_ranges=self.sns_ranges,
-            sample_size=1024
+            sample_size=sample_size
         )
 
     def _deactivate_and_cleanup(self):
