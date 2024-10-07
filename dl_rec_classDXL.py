@@ -563,7 +563,7 @@ class Sensor:
         print(f"From register DX_SENSORS_STATUS read: {data_status}")
         # range_num_str = str(self.sns_range)
         # nums of itterarion от self.range
-        if data_status:
+        if data_status == 128:
             for pair_n in range(count_of_measure):
                 # Initialize register addresses
                 reg_value = 85
@@ -577,16 +577,16 @@ class Sensor:
                     for num in self.sns_range:
                         time.sleep(0.2)
                         # print(f"Range {num}")
-                        # sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
+                        sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
                         # print(sns_val)
-                        # bin_data = int((sns_val[0] | (sns_val[1] << 8)))
+                        bin_data = int((sns_val[0] | (sns_val[1] << 8)))
                         # print(bin_data)
-                        # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                         # print(signed_value)
-                        print(f"reg_value Range {num} - {reg_value}")
-                        sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
+                        # print(f"reg_value Range {num} - {reg_value}")
+                        # sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
                         # print(sns_val)
-                        current_data.append(sns_val)
+                        current_data.append(signed_value)
                         # Define the register for the value based on the status register
                         # Move to the next range's registers
                         reg_value += count_bytes_res
@@ -627,6 +627,7 @@ class DataManager:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
+                    file.write(f"0 %\n")
                 # If tuples in list
                 if isinstance(pair, tuple):
                     formatted_values = ', '.join([f"{value:>6} mV" for value in pair])
@@ -728,19 +729,19 @@ class PlotterManager:
                         start_address = DX_SENSORS_DATA_FIRST + (index * DEFAULT_BYTE_READ)
                         # Read data for each sensor based on bytes_to_call
                         data = self._read_data_sns(packet_handler=packetHandler, port_handler=portHandler, register_id=start_address, byte_count=DEFAULT_BYTE_READ)
-                        if isinstance(data, list) and len(data) >= 2:
+                        if isinstance(data, list): 
+                            if len(data) == 2:
                         # Process the raw data (extracting status and 2-byte sensor value)
-                            bin_data = int((data[0] | (data[1] << 8)))  # Merge two bytes into a single value
-                            signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                    else:
-                        signed_value = data  # Handle case where data is not a list or invalid
+                                bin_data = int((data[0] | (data[1] << 8)))  # Merge two bytes into a single value
+                                signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        else:
+                            signed_value = data  # Handle case where data is not a list or invalid
                         sensor_data.append(signed_value)
                         index += 1
                     # print(f"Sensor {sns} data: {sensor_data}")
                     # print(sensor_data)
                 # print(f"Data from all sns and ranges: {sensor_data}")
                 # Update the data buffer dynamically based on number of sensors
-                
                     for rng_index, value in enumerate(sensor_data):
                         self.data[sns][rng_index][frame_num] = value
 
@@ -819,7 +820,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(10)
+                time.sleep(70)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
@@ -871,7 +872,7 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 10
+        COUNT_MEASURE = 50
         res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
 
         if res_sns:
@@ -952,9 +953,9 @@ def main(args: list):
     PORT_TIM = 100          # milliseconds
 
     SENSOR_ID = [46]           # Set to None to allow selection
-    SENSOR_RANGE = [1, 2]      # Replace with actual range configuration
+    SENSOR_RANGE = [1]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "writing"       # "writing" or "plotting"
+    MODE = "plotting"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
