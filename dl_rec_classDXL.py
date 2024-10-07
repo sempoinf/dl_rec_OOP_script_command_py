@@ -736,11 +736,9 @@ class PlotterManager:
                                 signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
                         else:
                             signed_value = data  # Handle case where data is not a list or invalid
-                        data_buff_r[rnge] = signed_value
+                        # Update the data buffer dynamically based on number of sensors
+                        self.data[sns][rnge][frame_num] = signed_value
                         index += 1
-                # Update the data buffer dynamically based on number of sensors
-                        for rnge, value in data_buff_r.items():
-                            self.data[sns][rnge][frame_num] = value
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
