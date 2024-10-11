@@ -552,22 +552,21 @@ class Sensor:
             data_val = self._read_data(register_id=reg_value + i, byte_count=1)
             print(f"Value from {reg_value + i} {data_val}")
 
-    def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
+    def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2, min_max: tuple = None)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
-        # Read the status from the current register
-        REG_STATUS = 84
-        # print(f"reg_status start sns -- {reg_status}")
 
-        data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
-        print(f"From register DX_SENSORS_STATUS read: {data_status}")
-        # range_num_str = str(self.sns_range)
+        input("put down in ")
         # nums of itterarion от self.range
-        if data_status == 128:
-            for pair_n in range(count_of_measure):
+        for pair_n in range(count_of_measure):
+            REG_STATUS = 84
+            # print(f"reg_status start sns -- {reg_status}")
+            # Read the status from the current register
+            data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+            # print(f"From register DX_SENSORS_STATUS read: {data_status}")
+            if data_status == 128:
                 # Initialize register addresses
                 reg_value = 85
-
                 # If status is read successfully, read the value + append
                 for sns in self.sns_id:
                     time.sleep(0.8)
@@ -576,17 +575,11 @@ class Sensor:
                     print(f"Sensor {sns}")
                     for num in self.sns_range:
                         time.sleep(0.2)
-                        # print(f"Range {num}")
                         sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
-                        # print(sns_val)
                         bin_data = int((sns_val[0] | (sns_val[1] << 8)))
-                        # print(bin_data)
                         signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                        # print(signed_value)
-                        # print(f"reg_value Range {num} - {reg_value}")
-                        # sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
-                        # print(sns_val)
-                        current_data.append(signed_value)
+                        verify_value = signed_value if signed_value > min(min_max) and signed_value < max(min_max) else None
+                        current_data.append(verify_value)
                         # Define the register for the value based on the status register
                         # Move to the next range's registers
                         reg_value += count_bytes_res
@@ -766,8 +759,8 @@ class PlotterManager:
 
 
 class Application:
-    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 115200,
-        protocol_version: Optional[float] = 2.0, port_timeout: int = 100,
+    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = None,
+        protocol_version: Optional[float] = None, port_timeout: int = 100,
         sensor_id: Optional[list] = None, sensor_range: Optional[list] = None,
         filename: Optional[str] = None,
         mode: Optional[str] = None) -> None:
@@ -867,8 +860,9 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 50
-        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+        COUNT_MEASURE = 20
+        max_mins = (100, 3500)
+        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE, min_max=max_mins)
 
         if res_sns:
             self.data_manager = DataManager(filename=self.file_names)
