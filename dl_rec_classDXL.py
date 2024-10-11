@@ -195,8 +195,8 @@ class DXL_device:
             bool: True if connection is successful, otherwise False.
         """
         ports = self._scan_ports(pattern='^/dev/cu.*')
-        baudrates = [self.baudrate] if self.baudrate else [9600, 57600, 115200, 1000000]
-        protocol_versions = [self.protocol_ver] if self.protocol_ver else [1.0, 2.0]
+        baudrates = [self.baudrate] if self.baudrate else (9600, 57600, 115200, 1000000)
+        protocol_versions = [self.protocol_ver] if self.protocol_ver else (1.0, 2.0)
 
         for port in ports:
             print(f"Trying port: {port}")
