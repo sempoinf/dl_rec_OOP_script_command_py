@@ -126,7 +126,7 @@ class DXL_device:
         self.packet_handler = None
         self.serial_connection = None  # For keep serial.Serial
 
-    def _scan_ports(self, pattern: str = r'^/dev/cu\.usbserial.*') -> List[str]:
+    def _scan_ports(self, pattern: str = r'^/dev/tty*') -> List[str]:
         """
         Scan all available COM ports based on the provided pattern.
 
@@ -194,7 +194,7 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
-        ports = self._scan_ports()
+        ports = self._scan_ports(pattern='^/dev/cu.*')
         baudrates = [self.baudrate] if self.baudrate else [9600, 57600, 115200, 1000000]
         protocol_versions = [self.protocol_ver] if self.protocol_ver else [1.0, 2.0]
 
@@ -650,7 +650,7 @@ class DataManager:
         return (f"Your Sensor has parameters: ID - {self.filename}")
 
 class PlotterManager:
-    def __init__(self, dxl_id: Optional[int], data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
+    def __init__(self, dxl_id: Optional[int], data: dict, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
         self.dxl_id = dxl_id # 
         self.data = data  # Sensor data buffer
         self.labels = labels  # Labels for the plots
@@ -668,9 +668,9 @@ class PlotterManager:
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, all_sns, all_ranges, sample_size, self.plotter_stop_event))
+        print(2)
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
@@ -952,7 +952,7 @@ def main(args: list):
     SENSOR_ID = [46]           # Set to None to allow selection
     SENSOR_RANGE = [1]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
-    MODE = "plotting"       # "writing" or "plotting"
+    MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
