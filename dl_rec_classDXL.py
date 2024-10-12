@@ -462,7 +462,7 @@ class Sensor:
                 # Example: Activate sensor for these ranges
                 self._write_data(register_id=cur_register_id, data_to_write=sns)
                 # print(range)
-                self._write_data(register_id=cur_register_id + 1, data_to_write=int(range)-1)
+                self._write_data(register_id=cur_register_id + 1, data_to_write=int(range)-1) # -1 to decrease range 
                 cur_register_id += 2
         return True
     
@@ -757,7 +757,6 @@ class PlotterManager:
                 f"Title for the plot - {self.title}"
                 )
 
-
 class Application:
     def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = None,
         protocol_version: Optional[float] = None, port_timeout: int = 100,
@@ -808,7 +807,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(10)
+                time.sleep(1)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
