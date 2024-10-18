@@ -495,37 +495,88 @@ class Sensor:
         self._write_data(register_id=24, data_to_write=0)
         return True
 
-    def _check_data_written(self) -> bool:
-        # range_num_str = str(self.sns_range)
-        reg_en_id = 60
-        reg_en_id_r = 61
+    def _check_data_written(self) -> dict:
+        """Check if the data is written correctly to the registers."""
+        reg_en_id, reg_en_id_r = 60, 61
+        reg_data_written = {}
 
-        index = 0
-        for sns in self.sns_id:
-            for range in self.sns_range:
+        for index, sns in enumerate(self.sns_id):
+            for rnge in self.sns_range:
                 time.sleep(0.05)
                 data_en_sns = self._read_data(register_id=reg_en_id)
-                print(f"DX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
-                reg_en_id += 2
                 data_en_sns_r = self._read_data(register_id=reg_en_id_r)
-                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}\n")
-                reg_en_id_r += 2
-                index += 1
-        data_status_meas = self._read_data(register_id=24)
-        print(f"DX_MEAS_START_STOP - {data_status_meas}")
-        return True
 
+                print(f"\nDX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
+                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}")
+
+                reg_en_id += 2
+                reg_en_id_r += 2
+                reg_data_written[data_en_sns] = data_en_sns_r
+
+        reg_data_written['start'] = self._read_data(register_id=24)
+        print(f"DX_MEAS_START_STOP - {reg_data_written['start']}\n")
+
+        return reg_data_written
+    
+    def _comp_data_activate(self, data: dict) -> bool:
+        """Compare data for sensor activation and trigger start measurement if valid."""
+        # print(data)
+        # all_snss_in_data = all(sns in data for sns in self.sns_id)
+
+        if not all(sns in data for sns in self.sns_id):
+            self._set_range()
+        else:
+            for sns in self.sns_id:
+                for range in self.sns_range:
+                    # print(1)
+                    if isinstance(data[sns], (list, tuple)):
+                        if range-1 not in data[sns]:
+                            # print(2)
+                            self._set_range()
+                    else: 
+                        if range-1 != data[sns]:
+                            self._set_range()
+
+        last_key = next(reversed(data))
+        if last_key == 'start' and data[last_key] == 1:
+            return True
+        else: return self._start_meas()
+     
+    def _comp_data_deactivate(self, data: dict) -> bool:
+        """Deactivate sensors if measurement is active."""
+    
+        if data.get('start') == 1:
+            self._stop_meas()
+            data.pop('start', None)
+
+            for sns, ranges in data.items():
+                if isinstance(ranges, (list, tuple)):
+                    for rnge in ranges:
+                        if sns != 0 or rnge != 0:
+                            return self._unset_range()
+                elif ranges != 0: return self._unset_range()
+        return True
+       
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
-        return self._find_sns_port() and self._set_range() and self._start_meas() and self._check_data_written()
+        if self._find_sns_port():
+            while True:  # Check twice
+                # print('\nstart')
+                data_w_regs = self._check_data_written()
+                # print('after read data\n')
+                if self._comp_data_activate(data_w_regs):
+                    return True
+        return False
 
     def deactivate_sns_measure(self) -> bool:
         """Deactivate measuring desiring sns"""
-        # if self._find_sns_port():
-        if self.flag_activate_sns:
-            self.flag_activate_sns = False
-            return self._unset_range() and self._stop_meas() and self._check_data_written()
-
+        data_w_regs = self._check_data_written()
+        while True:
+            if self._comp_data_deactivate(data_w_regs):
+                break
+        self.flag_activate_sns = False
+        return True
+       
     def read_sns_results_manual(self)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
@@ -552,11 +603,10 @@ class Sensor:
             data_val = self._read_data(register_id=reg_value + i, byte_count=1)
             print(f"Value from {reg_value + i} {data_val}")
 
-    def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2, min_max: tuple = None)-> list:
+    def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
 
-        input("put down in ")
         # nums of itterarion от self.range
         for pair_n in range(count_of_measure):
             REG_STATUS = 84
@@ -578,8 +628,9 @@ class Sensor:
                         sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
                         bin_data = int((sns_val[0] | (sns_val[1] << 8)))
                         signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                        verify_value = signed_value if signed_value > min(min_max) and signed_value < max(min_max) else None
-                        current_data.append(verify_value)
+                        # verify_value = signed_value if signed_value > min(min_max) and signed_value < max(min_max) else None
+                        # current_data.append(verify_value)
+                        current_data.append(signed_value)
                         # Define the register for the value based on the status register
                         # Move to the next range's registers
                         reg_value += count_bytes_res
@@ -609,7 +660,7 @@ class DataManager:
     def __init__(self, filename: Optional[str] = None):
         self.filename = filename
 
-    def write_data(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, count_of_measure: Optional[int] = 1, data: Optional[list] = None): 
+    def write_data(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, count_of_measure: Optional[int] = 1, name_exp: Optional[str]  = None, data: Optional[list] = None): 
         """Write sensor data to a file."""
         file_exists = os.path.isfile(self.filename)
         with open(self.filename, 'a') as file:
@@ -620,7 +671,7 @@ class DataManager:
                     file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
                     file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
                     file.write(f"Count of measure - {count_of_measure}\n")
-                    file.write(f"0 %\n")
+                    file.write(f"{name_exp}\n")
                 # If tuples in list
                 if isinstance(pair, tuple):
                     formatted_values = ', '.join([f"{value:>6} mV" for value in pair])
@@ -837,7 +888,7 @@ class Application:
         time.sleep(1)  # Wait for the device to initialize
 
         if self.devices.connect_device():
-            print("Device connected successfully.")
+            print("Device connected successfully.\n")
         else:
             raise ConnectionError("Failed to connect to the DXL device.")
 
@@ -860,23 +911,33 @@ class Application:
         """
         print("Running in 'writing' mode...")
         COUNT_MEASURE = 20
-        max_mins = (100, 3500)
-        res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE, min_max=max_mins)
-
-        if res_sns:
-            self.data_manager = DataManager(filename=self.file_names)
-            self.data_manager.write_data(
-            sensor_id=self.sensors.sns_id,
-            sensor_range=self.sensors.sns_range,
-            count_of_measure = COUNT_MEASURE,
-            data=res_sns
-            )
-            if self.data_manager.verify_data():
-                print("Data successfully written and verified.")
+        # max_mins = (100, 3500)
+        list_exp_0_1 = ['Vstill', '1%', 'Vstill', '0%', 'Vstill']
+        list_exp_2_3 = ['Vstill', '2%', 'Vstill', '3%', 'Vstill']
+        list_exp_4_5 = ['Vstill', '4%', 'Vstill', '5%', 'Vstill']
+        list_exp_10_20 = ['Vstill', '10%', 'Vstill', '20%', 'Vstill']
+        list_exp_50 = ['Vstill', '50%', 'Vstill']
+        # list_exp = ['Vstill', '0%', 'Vstill', '1%', 'Vstill', '2%', 'Vstill', '3%', 'Vstill', '4%', 'Vstill', '5%', 'Vstill', '10%', 'Vstill', '20%', 'Vstill', '50%', 'Vstill']
+        for i in list_exp_10_20:
+            input(f"Put It down for {i}")
+            time.sleep(100)
+            res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+            if res_sns:
+                self.data_manager = DataManager(filename=self.file_names)
+                self.data_manager.write_data(
+                sensor_id=self.sensors.sns_id,
+                sensor_range=self.sensors.sns_range,
+                count_of_measure = COUNT_MEASURE,
+                name_exp = i,
+                data=res_sns
+                )
+                if self.data_manager.verify_data():
+                    print("Data successfully written and verified.\n")
+                else:
+                    print("Data verification failed.")
             else:
-                print("Data verification failed.")
-        else:
-            print("No sensor results to write.")
+                print("No sensor results to write.")
+            # if any(chr.isdigit() for chr in i): time.sleep(90)
             
     def _plotting_mode(self):
         """
