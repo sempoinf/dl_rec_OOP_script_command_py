@@ -14,7 +14,7 @@ __pycache__/
 #dl_rec_answer_sns.py
 
 # Results of script
-*.txt
+results_term_compens.txt
 
 # Distribution / packaging
 .Python

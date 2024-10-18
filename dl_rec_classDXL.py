@@ -18,7 +18,6 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
 class config_dev():
-
     def __init__(self) -> None:
         self.devices_list = []
 
@@ -127,7 +126,7 @@ class DXL_device:
         self.packet_handler = None
         self.serial_connection = None  # For keep serial.Serial
 
-    def _scan_ports(self, pattern: str = r'^/dev/cu\.usbserial.*') -> List[str]:
+    def _scan_ports(self, pattern: str = r'^/dev/tty*') -> List[str]:
         """
         Scan all available COM ports based on the provided pattern.
 
@@ -195,9 +194,9 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
-        ports = self._scan_ports()
-        baudrates = [self.baudrate] if self.baudrate else [9600, 57600, 115200, 1000000]
-        protocol_versions = [self.protocol_ver] if self.protocol_ver else [1.0, 2.0]
+        ports = self._scan_ports(pattern='^/dev/cu.*')
+        baudrates = [self.baudrate] if self.baudrate else (9600, 57600, 115200, 1000000)
+        protocol_versions = [self.protocol_ver] if self.protocol_ver else (1.0, 2.0)
 
         for port in ports:
             print(f"Trying port: {port}")
@@ -269,7 +268,7 @@ class DXL_device:
                 f"Port handler  - {self.port_handler} & Packet handler - {self.packet_handler}")
 
 class Sensor:
-    def __init__(self, sensor_id: Optional[int] = None, sensor_range: Optional[str] = None, 
+    def __init__(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, 
                  dxl_id_dev: Optional[int] = None, port_handler: Optional[Any] = None, 
                  packet_handler: Optional[Any] = None) -> None:
         if port_handler is None or packet_handler is None:
@@ -281,36 +280,10 @@ class Sensor:
         self.port_handler = port_handler
         self.packet_handler = packet_handler
 
-        self.flag_activate_sns = False
-
-    def _read_data_elif(self, register_id: int, byte_count: int=1) -> int:
-        """
-        Reads a specified number of bytes from a given register.
-
-        Parameters:
-        register_id (int): The register ID from which to read data.
-        byte_count (int): The number of bytes to read (1, 2, or 4).
-
-        Returns:
-        int: The data read from the register.
-        """
-        while True:
-            time.sleep(0.05)
-            if byte_count == 1:
-                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
-            elif byte_count == 2:
-                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read2ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
-            elif byte_count == 4:
-                data_from_reg, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(self.port_handler, self.dxl_id_device, register_id)
-            else:
-                raise ValueError(f"Unsupported byte count: {byte_count}")
-        
-            if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
-                comm_error_msg = self.packet_handler.getTxRxResult(dxl_comm_result)
-                print(f"Communication error on register {register_id}: {comm_error_msg}")
-            else:
-                return data_from_reg
-            
+        # Hidden parameters
+        self.sns_port = [] # mb dont need
+        self.flag_activate_sns = {}
+       
     def _read_data(self, register_id: int, byte_count: int=1) -> int:
         """
         Reads a specified number of bytes from a given register.
@@ -361,27 +334,6 @@ class Sensor:
             else:
                 return data_from_reg
             
-    def _write_data_elif(self, register_id: int, data_to_write, byte_count: int=1):
-        """
-        Writes a specified number of bytes to a given register.
-        """
-        while True:
-            time.sleep(0.05)
-            if byte_count == 1:
-                dxl_comm_result, dxl_error = self.packet_handler.write1ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
-            elif byte_count == 2:
-                dxl_comm_result, dxl_error = self.packet_handler.write2ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
-            elif byte_count == 4:
-                dxl_comm_result, dxl_error = self.packet_handler.write4ByteTxRx(self.port_handler, self.dxl_id_device, register_id, data_to_write)
-            else:
-                raise ValueError(f"Unsupported byte count: {byte_count}")
-        
-            if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
-                comm_error_msg = self.packet_handler.getTxRxResult(dxl_comm_result)
-                print(f"Communication error on register {register_id}: {comm_error_msg}")
-            else:
-                return True
-            
     def _write_data(self, register_id: int, data_to_write, byte_count: int=1):
         """
         Writes a specified number of bytes to a given register.
@@ -416,106 +368,105 @@ class Sensor:
                 print(f"Communication error on register {register_id}: {comm_error_msg}")
             else:
                 return True
+    
+    def _rewrite_list_sns_id(self):
+        """Update sns_id to include only active sensors."""
+        # Filter sns_id based on active sensors in flag_activate_sns
+        self.sns_id = [sensor_id for sensor_id, status in self.flag_activate_sns.items() if status]
 
-    def _choose_sns(self,found_sns: list) -> bool:
+    def _choose_sns(self, found_sns: dict) -> bool:
         """Prompt user to select a sensor from the found sensors."""
-        if found_sns:
-            print("Sensors found:")
-            for sns_id, port_name in found_sns.items():
-                print(f"Sensor ID: {sns_id} on {port_name}")
-        
-            while True:
-                selected_id = int(input("Enter the Sensor ID you want to select: "))
-                try:
-                    if selected_id in found_sns:
-                        self.sns_id = selected_id
-                        self.sns_port = found_sns[selected_id]  # Corrected: Set the sensor port based on ID
-                        print(f"Selected Sensor {self.sns_id} on {self.sns_port}.")
-                        self.flag_activate_sns = True
-                        return True
-                    else:
-                        print("Selected Sensor ID is not valid.")
-                except ValueError:
-                    print("Invalid input. Please enter a numeric Sensor ID.")
-        else:
+        if not found_sns:
             print("No sensors found.")
             return False
 
-    def _find_sns_port(self):
-        """Find the port where the sensor with the desired ID is connected."""
-        print(f"Checking where sensors is connected.")
-        found_sensors = {}
-        # Port related constants
-        ports_sns = {37:"Port_1", 39:"Port_2", 41:"Port_3", 43:"Port_4"}
-        for reg_port_sns_option, name_port_sns_option  in zip(ports_sns.keys(), ports_sns.values()): 
-            cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
-            print(f"Name {name_port_sns_option} -> SNS_ID - {cur_sns_id}")
-            if self.sns_id == cur_sns_id:
-                self.sns_port = reg_port_sns_option
-                print(f"Sensor {self.sns_id} found on {name_port_sns_option}.")
-                self.flag_activate_sns = True
-                return True
-            # if self.sns_id is None:
-                # Collect all found sensors
-            if cur_sns_id not in found_sensors and cur_sns_id != 0:
-                found_sensors[cur_sns_id] = name_port_sns_option
-                # print(found_sensors)
+        print("Sensors found:")
+        for sns_id, port_name in found_sns.items():
+            print(f"Sensor ID: {sns_id} on {port_name}")
 
-        if not self._choose_sns(found_sensors):
-            return False
-        else: 
-            return True
+        self.sns_id = []  # Reset sns_id list
+
+        while True:
+            selected_id = input("Enter the Sensor ID you want to select (comma-separated), or press Enter to skip: ")
         
-    def _set_range_binary(self, nums_sns: int=1) -> bool:
-        """
-        Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
-        """
-        print(f"Activate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
-        binary_representation = bin(self.sns_range)[2:].zfill(10)  # pad to 10 bits if necessary
-        # print(binary_representation)
-        cur_register_id = 60
-        for index, bit in enumerate(reversed(binary_representation), start=0):
-            if bit == "1":
-                # Example: Activate sensor for these ranges
-                self._write_data(register_id=cur_register_id, data_to_write=self.sns_id)
-                # print(index)
-                self._write_data(register_id=cur_register_id + 1, data_to_write=index)
-                cur_register_id += 2
-        return True
-    
-    def _set_range(self, nums_sns: int=1) -> bool:
-        """
-        Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
-        """
-        print(f"Activate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
-        # print(binary_representation)
-        cur_register_id = 60
-        # range_num_str = str(self.sns_range)
-        for range in self.sns_range:
-                # Example: Activate sensor for these ranges
-                self._write_data(register_id=cur_register_id, data_to_write=self.sns_id)
-                # print(range)
-                self._write_data(register_id=cur_register_id + 1, data_to_write=int(range)-1)
-                cur_register_id += 2
-        return True
-    
-    def _unset_range_binary(self, nums_sns: int=1) -> bool:
-        """
-        Unset the range for the sensor by activating the binary bits that correspond to enabled ranges.
-        """
-        print(f"Deactivate Sensor ID {self.sns_id} - Range: {self.sns_range} ")
-        binary_representation = bin(self.sns_range)[2:].zfill(10)  # pad to 10 bits if necessary
-        # print(binary_representation)
-        cur_register_id = 60
-        for index, bit in enumerate(reversed(binary_representation), start=0):
-            if bit == "1":
-                # Example: Activate sensor for these ranges
-                self._write_data(register_id=cur_register_id, data_to_write=0)
-                self._write_data(register_id=cur_register_id + 1, data_to_write=0)
-                cur_register_id += 2
-        return True
+            if selected_id.strip() == '':
+                print("No sensor selected. Skipping sensor selection.")
+                return True
 
-    def _unset_range(self, nums_sns: int=1) -> bool:
+            try:
+                sensor_ids = [int(id.strip()) for id in selected_id.split(',')]
+                print("Selected Sensor IDs:", sensor_ids)
+
+                # Process each selected sensor ID
+                for sns_id in sensor_ids:
+                    if sns_id in found_sns:
+                        self.sns_id.append(sns_id)  # Add sensor ID to the list
+                        print(f"Selected Sensor {sns_id} on {found_sns[sns_id]}.")
+                        self.flag_activate_sns[sns_id] = True  # Mark sensor as active
+                    else:
+                        print(f"Sensor ID {sns_id} is not valid.")
+            
+                # Exit loop if any valid sensor was selected
+                if self.sns_id:
+                    return True
+                else:
+                    print("No valid sensor selected. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter numeric Sensor IDs.")
+
+    def _find_sns_port(self) -> bool:
+        """Find the port where the sensor with the desired ID is connected."""
+        print("Checking where sensors are connected.")
+    
+        found_sensors = {}
+        self.flag_activate_sns = {sns: False for sns in self.sns_id}  # Initialize all sensors as inactive
+        self.sns_port = []  # Reset sensor port list
+
+        # Define available ports and register addresses for sensor IDs
+        ports_sns = {37: "Port_1", 39: "Port_2", 41: "Port_3", 43: "Port_4"}
+        
+        # Scan ports to find connected sensors
+        for reg_port_sns_option, name_port_sns_option in ports_sns.items():
+            cur_sns_id = self._read_data(reg_port_sns_option, byte_count=2)
+            print(f"Checking {name_port_sns_option} -> Found Sensor ID: {cur_sns_id}")
+
+            # If sensor is found on the port, activate and record it
+            if cur_sns_id in self.sns_id:
+                self.sns_port.append(reg_port_sns_option)
+                print(f"Sensor {cur_sns_id} found on {name_port_sns_option}.")
+                self.flag_activate_sns[cur_sns_id] = True
+            elif cur_sns_id != 0:
+                found_sensors[cur_sns_id] = name_port_sns_option
+                
+        # Allow user to select from found sensors if necessary
+        if found_sensors and not self.sns_id:
+            if not self._choose_sns(found_sensors):
+                return False
+
+        # Update sns_id to only include active sensors
+        self._rewrite_list_sns_id()
+
+        # Return True if at least one sensor is active
+        return any(self.flag_activate_sns.values())
+
+    def _set_range(self) -> bool:
+        """
+        Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
+        """
+        print(f"Activate Sensor ID/s {self.sns_id} - Range/s: {self.sns_range} ")
+        cur_register_id = 60
+        # range_num_str = str(self.sns_range)
+        for sns in self.sns_id:
+            # print(sns)
+            for range in self.sns_range:
+                # Example: Activate sensor for these ranges
+                self._write_data(register_id=cur_register_id, data_to_write=sns)
+                # print(range)
+                self._write_data(register_id=cur_register_id + 1, data_to_write=int(range)-1) # -1 to decrease range 
+                cur_register_id += 2
+        return True
+    
+    def _unset_range(self) -> bool:
         """
         Set the range for the sensor by activating the binary bits that correspond to enabled ranges.
         """
@@ -523,7 +474,8 @@ class Sensor:
         # print(binary_representation)
         cur_register_id = 60
         # range_num_str = str(self.sns_range)
-        for range in self.sns_range:
+        for sns in self.sns_id:
+            for range in self.sns_range:
                 # Example: Activate sensor for these ranges
                 self._write_data(register_id=cur_register_id, data_to_write=0)
                 # print(index)
@@ -543,33 +495,88 @@ class Sensor:
         self._write_data(register_id=24, data_to_write=0)
         return True
 
-    def _check_data_written(self) -> bool:
-        # range_num_str = str(self.sns_range)
-        reg_en_id = 60
-        reg_en_id_r = 61
-        for index, num in enumerate(self.sns_range):
-            time.sleep(0.05)
-            data_en_sns = self._read_data(register_id=reg_en_id)
-            print(f"DX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
-            reg_en_id += 2
-            data_en_sns_r = self._read_data(register_id=reg_en_id_r)
-            print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}")
-            reg_en_id_r += 2
-        data_status_meas = self._read_data(register_id=24)
-        print(f"DX_MEAS_START_STOP - {data_status_meas}")
-        return True
+    def _check_data_written(self) -> dict:
+        """Check if the data is written correctly to the registers."""
+        reg_en_id, reg_en_id_r = 60, 61
+        reg_data_written = {}
 
+        for index, sns in enumerate(self.sns_id):
+            for rnge in self.sns_range:
+                time.sleep(0.05)
+                data_en_sns = self._read_data(register_id=reg_en_id)
+                data_en_sns_r = self._read_data(register_id=reg_en_id_r)
+
+                print(f"\nDX_ENABLE_SENSOR_ID_{index}_ID {data_en_sns}")
+                print(f"DX_ENABLE_SENSOR_ID_{index}_RANGE {data_en_sns_r}")
+
+                reg_en_id += 2
+                reg_en_id_r += 2
+                reg_data_written[data_en_sns] = data_en_sns_r
+
+        reg_data_written['start'] = self._read_data(register_id=24)
+        print(f"DX_MEAS_START_STOP - {reg_data_written['start']}\n")
+
+        return reg_data_written
+    
+    def _comp_data_activate(self, data: dict) -> bool:
+        """Compare data for sensor activation and trigger start measurement if valid."""
+        # print(data)
+        # all_snss_in_data = all(sns in data for sns in self.sns_id)
+
+        if not all(sns in data for sns in self.sns_id):
+            self._set_range()
+        else:
+            for sns in self.sns_id:
+                for range in self.sns_range:
+                    # print(1)
+                    if isinstance(data[sns], (list, tuple)):
+                        if range-1 not in data[sns]:
+                            # print(2)
+                            self._set_range()
+                    else: 
+                        if range-1 != data[sns]:
+                            self._set_range()
+
+        last_key = next(reversed(data))
+        if last_key == 'start' and data[last_key] == 1:
+            return True
+        else: return self._start_meas()
+     
+    def _comp_data_deactivate(self, data: dict) -> bool:
+        """Deactivate sensors if measurement is active."""
+    
+        if data.get('start') == 1:
+            self._stop_meas()
+            data.pop('start', None)
+
+            for sns, ranges in data.items():
+                if isinstance(ranges, (list, tuple)):
+                    for rnge in ranges:
+                        if sns != 0 or rnge != 0:
+                            return self._unset_range()
+                elif ranges != 0: return self._unset_range()
+        return True
+       
     def activate_sns_measure(self) -> bool:
         """Activate measuring desiring sns"""
-        return self._find_sns_port() and self._set_range() and self._start_meas() and self._check_data_written()
+        if self._find_sns_port():
+            while True:  # Check twice
+                # print('\nstart')
+                data_w_regs = self._check_data_written()
+                # print('after read data\n')
+                if self._comp_data_activate(data_w_regs):
+                    return True
+        return False
 
     def deactivate_sns_measure(self) -> bool:
         """Deactivate measuring desiring sns"""
-        # if self._find_sns_port():
-        if self.flag_activate_sns:
-            self.flag_activate_sns = False
-            return self._unset_range() and self._stop_meas()
-
+        data_w_regs = self._check_data_written()
+        while True:
+            if self._comp_data_deactivate(data_w_regs):
+                break
+        self.flag_activate_sns = False
+        return True
+       
     def read_sns_results_manual(self)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
@@ -599,48 +606,47 @@ class Sensor:
     def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
         data_read = []
-        # range_num_str = str(self.sns_range)
+
         # nums of itterarion от self.range
         for pair_n in range(count_of_measure):
-            # print(f"Count of take measures {pair_n}")
-            # Initialize register addresses
-            reg_status = 85
-            reg_value = 86
-            # List to store data for the current iteration
-            current_data = []
-
-            # self._tryhard()
-            # input()
-
-            for num in self.sns_range:
-                time.sleep(0.8)
-                # print(f"Range {num}")
-                # Read the status from the current register
-                # print(f"reg_status -- {reg_status}")
-                data_status = self._read_data(register_id=reg_status, byte_count=1)
-                # print(f"From register DX_SENSORS_DATA_{num} read: {data_status}")
-                # Define the register for the value based on the status register
-                reg_status += count_bytes_res + 1
-                if data_status:
-                    time.sleep(0.3)
-                    # If status is read successfully, read the value + append
-                    sns_val = self._read_data(register_id=reg_value, byte_count=count_bytes_res)
-                    # print(sns_val)
-                    current_data.append(sns_val)
-                # Move to the next range's registers
-                # print(f"reg_value -- {reg_value}")
-                reg_value += count_bytes_res + 1
-            # If more than one digit in the range, group data into tuples
-            if len(self.sns_range) > 1:
-                # Group data into tuples of pairs
-                data_read.extend(tuple(current_data[i:i+2]) for i in range(0, len(current_data), 2))
-            else:
-                # Append single values to the list
-                data_read.extend(current_data)
-
-            # print(f"Data {pair_n} iter written")
-        
-        print(f"Data taken {data_read}")
+            REG_STATUS = 84
+            # print(f"reg_status start sns -- {reg_status}")
+            # Read the status from the current register
+            data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+            # print(f"From register DX_SENSORS_STATUS read: {data_status}")
+            if data_status == 128:
+                # Initialize register addresses
+                reg_value = 85
+                # If status is read successfully, read the value + append
+                for sns in self.sns_id:
+                    time.sleep(0.8)
+                    # List to store data for the current iteration
+                    current_data = []
+                    print(f"Sensor {sns}")
+                    for num in self.sns_range:
+                        time.sleep(0.2)
+                        sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
+                        bin_data = int((sns_val[0] | (sns_val[1] << 8)))
+                        signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        # verify_value = signed_value if signed_value > min(min_max) and signed_value < max(min_max) else None
+                        # current_data.append(verify_value)
+                        current_data.append(signed_value)
+                        # Define the register for the value based on the status register
+                        # Move to the next range's registers
+                        reg_value += count_bytes_res
+                        # print(reg_value)
+                    
+                    # If more than one digit in the range, group data into tuples
+                    if len(self.sns_range) > 1:
+                        # Group data into tuples of pairs
+                        data_read.extend(tuple(current_data[i:i+2]) for i in range(0, len(current_data), 2))
+                    else:
+                        # Append single values to the list
+                        data_read.extend(current_data)
+                    print(f"Sensor value all range: {current_data}")
+                    # input()
+                    
+        print(f"Data taken: {data_read}")
         return data_read
 
     def __call__(self, *args: Any, **kwds: Any) -> str:
@@ -654,7 +660,7 @@ class DataManager:
     def __init__(self, filename: Optional[str] = None):
         self.filename = filename
 
-    def write_data(self, sensor_id: Optional[int] = None, sensor_range: Optional[str] = None, data: Optional[list] = None): 
+    def write_data(self, sensor_id: Optional[list] = None, sensor_range: Optional[list] = None, count_of_measure: Optional[int] = 1, name_exp: Optional[str]  = None, data: Optional[list] = None): 
         """Write sensor data to a file."""
         file_exists = os.path.isfile(self.filename)
         with open(self.filename, 'a') as file:
@@ -662,13 +668,15 @@ class DataManager:
                 file.write("Sensor Data Pairs\n=================\n\n")
             for index, pair in enumerate(data):
                 if index == 0:
-                    file.write(f"SENSOR is active: {sensor_id}\n")
-                    file.write(f"SENSORs Range is/are {sensor_range}\n")
+                    file.write(f"SENSOR is active: {', '.join(map(str, sensor_id))}\n")
+                    file.write(f"SENSORs Range is/are {', '.join(map(str, sensor_range))}\n")
+                    file.write(f"Count of measure - {count_of_measure}\n")
+                    file.write(f"{name_exp}\n")
                 # If tuples in list
-                if isinstance(pair, tuple) and len(pair) == 2:
-                    file.write(f"Pair {index+1}: {pair[0]:>6} mV, {pair[1]:>6} mV\n")
+                if isinstance(pair, tuple):
+                    formatted_values = ', '.join([f"{value:>6} mV" for value in pair])
+                    file.write(f"Index values - {index+1}: {formatted_values}\n")
                 else:
-                    # print(f"Not tuples data at index {index+1}: {pair}")
                     file.write(f"Just value tick {index+1}: {pair} mV\n")
             file.write("\nEND OF DATA\n\n")
 
@@ -677,7 +685,6 @@ class DataManager:
         if not os.path.isfile(self.filename):
             return False
         with open(self.filename, 'r') as file:
-            # print(f"Why?")
             return file.readlines()[-2].strip() == "END OF DATA"
         
     def __call__(self, *args: Any, **kwds: Any) -> Any:
@@ -687,7 +694,7 @@ class DataManager:
         return (f"Your Sensor has parameters: ID - {self.filename}")
 
 class PlotterManager:
-    def __init__(self, dxl_id: Optional[int], data: list, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
+    def __init__(self, dxl_id: Optional[int], data: dict, labels: list, max_mins: list, show_legend: bool=False, title: str=None, subplots: list=None):
         self.dxl_id = dxl_id # 
         self.data = data  # Sensor data buffer
         self.labels = labels  # Labels for the plots
@@ -698,59 +705,84 @@ class PlotterManager:
         self.plotter_stop_event = Event()  # Event to signal stopping the plotter thread
         self.plotter = None  # Plotter instance to be initialized later
 
-    def start(self, packetHandler, portHandler, total_sns_and_ranges: Optional[int], sample_size: int=1024):
+    def start(self, packetHandler, portHandler, all_sns: Optional[int], all_ranges: Optional[int], sample_size: int=1024):
         """
         Starts the data collection and plotting process.
         :param packetHandler: Communication handler for the device
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-        
         self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
-        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, total_sns_and_ranges, sample_size, self.plotter_stop_event))
+        plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, all_sns, all_ranges, sample_size, self.plotter_stop_event))
+        print(2)
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
 
-    def plotter_proc(self, packetHandler, portHandler, bytes_to_call: Optional[int], sample_size: Optional[int], stop_event: Event):
+    def _read_data_sns(self, packet_handler, port_handler, register_id: int, byte_count: int=1) -> int:
+        """
+        Reads a specified number of bytes from a given register.
+
+        Parameters:
+        register_id (int): The register ID from which to read data.
+        byte_count (int): The number of bytes to read (1, 2, or 4).
+
+        Returns:
+        int: The data read from the register.
+        """
+        while True:
+            time.sleep(0.05)
+            match byte_count:
+                case 1:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read1ByteTxRx(port_handler, self.dxl_id, register_id)
+                case 2:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read2ByteTxRx(port_handler, self.dxl_id, register_id)
+                case 4:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.read4ByteTxRx(port_handler, self.dxl_id, register_id)
+                case default:
+                    data_from_reg, dxl_comm_result, dxl_error = packet_handler.readTxRx(port_handler, self.dxl_id, register_id, byte_count)
+        
+            if CommunicationStatus(dxl_comm_result) != CommunicationStatus.SUCCESS:
+                comm_error_msg = packet_handler.getTxRxResult(dxl_comm_result)
+                print(f"Communication error on register {register_id}: {comm_error_msg}")
+            else:
+                return data_from_reg
+        
+
+    def plotter_proc(self, packetHandler, portHandler, snss: Optional[list[int]], ranges: Optional[list[int]], sample_size: Optional[int], stop_event: Event):
         """
         Background process to collect data from sensors.
         :param packetHandler: Communication handler
         :param portHandler: Port handler
-        :param bytes_to_call: Number of sensors (defines how many bytes to read)
+        :param snss: List of sensors (defines how many sensors to read from)
+        :param ranges: List of ranges for each sensor
         :param sample_size: Number of samples to collect per update
         :param stop_event: Event to signal when to stop the process
         """
         time.sleep(0.1)
         DX_SENSORS_DATA_FIRST = 85  # First register to read from
-        DEFAULT_BYTE_READ = 3
-        # COUNT_BYTE_READ = bytes_to_call * 3  # Each sensor needs 3 bytes (status + 2 data bytes)
+        DEFAULT_BYTE_READ = 2
 
         while not stop_event.is_set():
+            # rewrite in normal way
             for frame_num in range(sample_size):
-                sensor_data = []
-                for i in range(bytes_to_call):
-                    # Read data for each sensor based on bytes_to_call
-                    while True:
-                        time.sleep(0.005)
-                        start_address = DX_SENSORS_DATA_FIRST + (i * DEFAULT_BYTE_READ)  # Offset address based on sensor index
-                        data, dxl_comm_result, dxl_error = packetHandler.readTxRx(
-                    portHandler, self.dxl_id, start_address, DEFAULT_BYTE_READ)
-                        if dxl_comm_result == COMM_SUCCESS:
-                            break
-
-                    # Process the raw data (extracting status and 2-byte sensor value)
-                    status_byte = data[0]  # Status byte
-                    if status_byte is not None:  # Check if status is valid
-                        bin_data = int((data[1] | (data[2] << 8)))  # Merge two bytes into a single value
-                        # print(f"Bin_Data - {bin_data}")
-                        # signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
-                        # print(f"Signed value - {signed_value}")
-                        sensor_data.append(bin_data)
-
-                # Update the data buffer dynamically based on number of sensors
-                for idx, value in enumerate(sensor_data):
-                    self.data[idx][frame_num] = value
+                index = 0
+                for sns_index, sns in enumerate(snss):
+                    data_buff_r = {}
+                    for rnge_index, rnge in enumerate(ranges):
+                        start_address = DX_SENSORS_DATA_FIRST + (index * DEFAULT_BYTE_READ)
+                        # Read data for each sensor based on bytes_to_call
+                        data = self._read_data_sns(packet_handler=packetHandler, port_handler=portHandler, register_id=start_address, byte_count=DEFAULT_BYTE_READ)
+                        if isinstance(data, list): 
+                            if len(data) == 2:
+                        # Process the raw data (extracting status and 2-byte sensor value)
+                                bin_data = int((data[0] | (data[1] << 8)))  # Merge two bytes into a single value
+                                signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        else:
+                            signed_value = data  # Handle case where data is not a list or invalid
+                        # Update the data buffer dynamically based on number of sensors
+                        self.data[sns][rnge][frame_num] = signed_value
+                        index += 1
 
             # Signal the plotter to update (if needed)
             self.plotter.upd_cnt = 0
@@ -776,11 +808,10 @@ class PlotterManager:
                 f"Title for the plot - {self.title}"
                 )
 
-
 class Application:
-    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = 115200,
-        protocol_version: Optional[float] = 2.0, port_timeout: int = 100,
-        sensor_id: Optional[int] = None, sensor_range: Optional[str] = None,
+    def __init__(self, dxl_id: Optional[int] = None, baudrate: Optional[int] = None,
+        protocol_version: Optional[float] = None, port_timeout: int = 100,
+        sensor_id: Optional[list] = None, sensor_range: Optional[list] = None,
         filename: Optional[str] = None,
         mode: Optional[str] = None) -> None:
         """
@@ -827,7 +858,7 @@ class Application:
             self._initialize_sensor()
 
             if self.sensors.activate_sns_measure():
-                time.sleep(5)
+                time.sleep(1)
                 if self.mode == "writing":
                     self._writing_mode()
                 elif self.mode == "plotting":
@@ -857,7 +888,7 @@ class Application:
         time.sleep(1)  # Wait for the device to initialize
 
         if self.devices.connect_device():
-            print("Device connected successfully.")
+            print("Device connected successfully.\n")
         else:
             raise ConnectionError("Failed to connect to the DXL device.")
 
@@ -879,39 +910,55 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        res_sns = self.sensors.read_sns_results(count_of_measure=30)
-
-        if res_sns:
-            self.data_manager = DataManager(filename=self.file_names)
-            self.data_manager.write_data(
+        COUNT_MEASURE = 20
+        # max_mins = (100, 3500)
+        list_exp_0_1 = ['Vstill', '1%', 'Vstill', '0%', 'Vstill']
+        list_exp_2_3 = ['Vstill', '2%', 'Vstill', '3%', 'Vstill']
+        list_exp_4_5 = ['Vstill', '4%', 'Vstill', '5%', 'Vstill']
+        list_exp_10_20 = ['Vstill', '10%', 'Vstill', '20%', 'Vstill']
+        list_exp_50 = ['Vstill', '50%', 'Vstill']
+        # list_exp = ['Vstill', '0%', 'Vstill', '1%', 'Vstill', '2%', 'Vstill', '3%', 'Vstill', '4%', 'Vstill', '5%', 'Vstill', '10%', 'Vstill', '20%', 'Vstill', '50%', 'Vstill']
+        for i in list_exp_10_20:
+            input(f"Put It down for {i}")
+            time.sleep(100)
+            res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+            if res_sns:
+                self.data_manager = DataManager(filename=self.file_names)
+                self.data_manager.write_data(
                 sensor_id=self.sensors.sns_id,
                 sensor_range=self.sensors.sns_range,
+                count_of_measure = COUNT_MEASURE,
+                name_exp = i,
                 data=res_sns
-            )
-
-            if self.data_manager.verify_data():
-                print("Data successfully written and verified.")
+                )
+                if self.data_manager.verify_data():
+                    print("Data successfully written and verified.\n")
+                else:
+                    print("Data verification failed.")
             else:
-                print("Data verification failed.")
-        else:
-            print("No sensor results to write.")
-
+                print("No sensor results to write.")
+            # if any(chr.isdigit() for chr in i): time.sleep(90)
+            
     def _plotting_mode(self):
         """
         Handles the 'plotting' mode: collects sensor data and visualizes it.
         """
         print("Running in 'plotting' mode...")
         # Initialize data buffer and plot settings
-        data_buff = [[None] * 1024 for _ in range(2)]  # Assuming two sensors
-        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff))]
-        max_mins = [[0, 4000] for _ in range(len(data_buff))]
-        subplots = [2]  # Adjust based on the number of sensors or requirements
+        sample_size = 1024
+        data_buff_sns_r = {sns: {rnge: [None] * sample_size for rnge in self.sns_ranges} for sns in self.sns_ids}
+        # data_buff_sns = [[None] * 1024 for _, _ in enumerate(self.sns_ids)]
+        # for all ranges in one sns
+        # data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
+
+        plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns_r))]
+        max_mins = [[100, 3500] for _ in range(len(data_buff_sns_r))]
+        subplots = [len(self.sns_ids)]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
         self.plotter_manager = PlotterManager(
             dxl_id=self.dxl_id_devs,
-
-            data=data_buff,
+            data=data_buff_sns_r,
             labels=plot_legend,
             max_mins=max_mins,
             # show_legend=True,
@@ -923,8 +970,9 @@ class Application:
         self.plotter_manager.start(
             packetHandler=self.devices.packet_handler,
             portHandler=self.devices.port_handler,
-            total_sns_and_ranges= len(self.sns_ranges),
-            sample_size=1024
+            all_sns=self.sns_ids,
+            all_ranges=self.sns_ranges,
+            sample_size=sample_size
         )
 
     def _deactivate_and_cleanup(self):
@@ -947,9 +995,7 @@ class Application:
                 print("Serial port closed successfully.")
             except Exception as e:
                 print(f"Error closing serial port: {e}")
-
-
-    
+   
 def main(args: list):
     # Define configurations
     DXL_ID = 171            # Replace with your actual device ID
@@ -957,8 +1003,8 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = 46           # Set to None to allow selection
-    SENSOR_RANGE = "2"      # Replace with actual range configuration
+    SENSOR_ID = [46]           # Set to None to allow selection
+    SENSOR_RANGE = [1]      # Replace with actual range configuration
     FILENAME = "results_term_compens.txt"
     MODE = "writing"       # "writing" or "plotting"
 
