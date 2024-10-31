@@ -439,7 +439,7 @@ class Sensor:
                 found_sensors[cur_sns_id] = name_port_sns_option
                 
         # Allow user to select from found sensors if necessary
-        if found_sensors and not self.sns_id:
+        if found_sensors:
             if not self._choose_sns(found_sensors):
                 return False
 
@@ -748,7 +748,6 @@ class PlotterManager:
             else:
                 return data_from_reg
         
-
     def plotter_proc(self, packetHandler, portHandler, snss: Optional[list[int]], ranges: Optional[list[int]], sample_size: Optional[int], stop_event: Event):
         """
         Background process to collect data from sensors.
@@ -910,17 +909,13 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 20
+        COUNT_MEASURE = 100
         # max_mins = (100, 3500)
-        list_exp_0_1 = ['Vstill', '1%', 'Vstill', '0%', 'Vstill']
-        list_exp_2_3 = ['Vstill', '2%', 'Vstill', '3%', 'Vstill']
-        list_exp_4_5 = ['Vstill', '4%', 'Vstill', '5%', 'Vstill']
-        list_exp_10_20 = ['Vstill', '10%', 'Vstill', '20%', 'Vstill']
-        list_exp_50 = ['Vstill', '50%', 'Vstill']
-        # list_exp = ['Vstill', '0%', 'Vstill', '1%', 'Vstill', '2%', 'Vstill', '3%', 'Vstill', '4%', 'Vstill', '5%', 'Vstill', '10%', 'Vstill', '20%', 'Vstill', '50%', 'Vstill']
-        for i in list_exp_10_20:
+        # list_exp = ['0%', '1%', 'Vstill', '2%', '3%', '4%', 'Vstill', '5%', '10%', '20%', '50%', 'Vstill']
+        list_exp_100Hz = ['Vstill', '1000Hz', 'Vstill']
+        for i in list_exp_100Hz:
             input(f"Put It down for {i}")
-            time.sleep(100)
+            time.sleep(5)
             res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
             if res_sns:
                 self.data_manager = DataManager(filename=self.file_names)
@@ -952,7 +947,7 @@ class Application:
         # data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
 
         plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns_r))]
-        max_mins = [[100, 3500] for _ in range(len(data_buff_sns_r))]
+        max_mins = [[100, 3300] for _ in range(len(data_buff_sns_r))]
         subplots = [len(self.sns_ids)]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
@@ -1003,9 +998,9 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [46]           # Set to None to allow selection
+    SENSOR_ID = [2, 40]           # Set to None to allow selection
     SENSOR_RANGE = [1]      # Replace with actual range configuration
-    FILENAME = "results_term_compens.txt"
+    FILENAME = "results_100Hz.txt" # "results_ethanol_0_50.txt"
     MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
