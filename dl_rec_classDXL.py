@@ -651,17 +651,17 @@ class Sensor:
 
     def read_packet_results(self, count_of_elems: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
-        REG_STATUS = 84
+        # REG_STATUS = 84
         data_read = []
-        data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+        # data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
         # nums of itterarion от self.range
+        REG_VALUE = 396
         for cnt in range(count_of_elems):
             # Read the status from the current register
-            if data_status == 128:
+            # if data_status == 128:
                 # Initialize register addresses
-                REG_VALUE = 396
                 # If status is read successfully, read the value + append
-                time.sleep(0.01)
+                # time.sleep(0.01)
                 sns_val = self._read_data_universal(register_id=REG_VALUE, byte_count=count_bytes_res)
                 bin_data = int((sns_val[0] | (sns_val[1] << 8)))
                 signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
@@ -931,14 +931,14 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 128
+        COUNT_MEASURE = 64
         # max_mins = (100, 3500)
         # list_exp = ['0%', '1%', 'Vstill', '2%', '3%', '4%', 'Vstill', '5%', '10%', '20%', '50%', 'Vstill']
         list_exp_100Hz = ['Vstill', '1000Hz', 'Vstill']
         for i in list_exp_100Hz:
             input(f"Put It down for {i}")
-            time.sleep(1)
-            res_sns = self.sensors.read_packet_results(count_of_measure=COUNT_MEASURE)
+            time.sleep(10)
+            res_sns = self.sensors.read_packet_results(count_of_elems=COUNT_MEASURE)
             if res_sns:
                 self.data_manager = DataManager(filename=self.file_names)
                 self.data_manager.write_data(
