@@ -934,7 +934,7 @@ class Application:
         COUNT_MEASURE = 64
         # max_mins = (100, 3500)
         # list_exp = ['0%', '1%', 'Vstill', '2%', '3%', '4%', 'Vstill', '5%', '10%', '20%', '50%', 'Vstill']
-        list_exp_100Hz = ['Vstill', '1000Hz', 'Vstill']
+        list_exp_100Hz = ['Vstill', '500Hz', 'Vstill']
         for i in list_exp_100Hz:
             input(f"Put It down for {i}")
             time.sleep(10)
@@ -1022,7 +1022,7 @@ def main(args: list):
 
     SENSOR_ID = [35]           # Set to None to allow selection
     SENSOR_RANGE = [1]      # Replace with actual range configuration
-    FILENAME = "results_1000Hz.txt" # "results_ethanol_0_50.txt"
+    FILENAME = '../dl_rec_read_data_py/res/results_500Hz.txt'
     MODE = "writing"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, 
