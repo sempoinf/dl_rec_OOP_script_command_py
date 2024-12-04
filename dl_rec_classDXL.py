@@ -126,7 +126,7 @@ class DXL_device:
         self.packet_handler = None
         self.serial_connection = None  # For keep serial.Serial
 
-    def _scan_ports(self, pattern: str = r'^/dev/tty*') -> List[str]:
+    def _scan_ports(self, pattern: str = r'^/dev/cu.usbmodem*') -> List[str]:
         """
         Scan all available COM ports based on the provided pattern.
 
@@ -186,6 +186,19 @@ class DXL_device:
                 print(f"Ping successful: {outping_data}")
                 break
 
+    def _get_port_pattern(self, platform_name: str) -> str:
+        """Return pattern of port depend os"""
+        patterns = {
+            "win": "^/dev/tty*",
+            "linux": "^/dev/cu.*",
+            "darwin": "^/dev/cu.usbmodem*"
+        }
+        # find key 
+        for key, pattern in patterns.items():
+            if platform_name.startswith(key):
+                return pattern
+        return None
+
     def connect_device(self) -> bool:
         """
         Universal connection method.
@@ -194,7 +207,9 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
-        ports = self._scan_ports(pattern='^/dev/cu.*')
+        os_name = sys.platform
+        port_pattern = self._get_port_pattern(platform_name = os_name)
+        ports = self._scan_ports(pattern=port_pattern)
         baudrates = [self.baudrate] if self.baudrate else (9600, 57600, 115200, 1000000)
         protocol_versions = [self.protocol_ver] if self.protocol_ver else (1.0, 2.0)
 
