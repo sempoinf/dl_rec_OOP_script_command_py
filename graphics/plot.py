@@ -52,7 +52,7 @@ class Plotter:
 
         self.labels = labels
         self.plot = [[] for i in range(len(data))]
-        # print(self.plot)
+        print(self.plot)
 
         self.x = np.arange(window_size)
         self.intensity_plot_init(self, window_size, ch_num, max_mins, title, \
