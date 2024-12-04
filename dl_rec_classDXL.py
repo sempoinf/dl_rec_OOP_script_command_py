@@ -252,6 +252,7 @@ class DXL_device:
 
                 if self.dxl_id:
                     if self._find_device(self.dxl_id, baudrate_option, protocol_option, port):
+                        # print(f"Port: {self.port_handler}\n Packet: {self.packet_handler}\n")
                         return True
                     # need back in protocol itter
                     continue
@@ -749,9 +750,9 @@ class PlotterManager:
         :param portHandler: Port handler for the device
         :param sample_size: Number of samples to collect per update
         """
-        self.plotter = Plotter(self.data, self.labels, self.max_mins, show_legend=self.show_legend, title=self.title, sublots=self.subplots)
+        self.plotter = Plotter(data=self.data, max_mins=self.max_mins)
         plotter_thread = Thread(target=self.plotter_proc, args=(packetHandler, portHandler, all_sns, all_ranges, sample_size, self.plotter_stop_event))
-        print(2)
+        # print(2)
         plotter_thread.start()  # Start the background thread for data collection
         print(f"Start build graphics")
         self.visual_process(self.plotter)  # Start the plotting in the main thread
@@ -982,9 +983,9 @@ class Application:
         # data_buff_sns = [[None] * 1024 for _, _ in enumerate(self.sns_ids)]
         # for all ranges in one sns
         # data_buff_ranges = [[None] * 1024 for _, _ in enumerate(self.sns_ranges)]
-
+        
         plot_legend = [f"Sensor {i+1}" for i in range(len(data_buff_sns_r))]
-        max_mins = [[100, 3300] for _ in range(len(data_buff_sns_r))]
+        max_mins = [[100, 3400] for _ in range(len(data_buff_sns_r))]
         subplots = [len(self.sns_ids)]  # Adjust based on the number of sensors or requirements
 
         # Initialize PlotterManager
@@ -1035,10 +1036,10 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [35]           # Set to None to allow selection
+    SENSOR_ID = [46]           # Set to None to allow selection
     SENSOR_RANGE = [1]      # Replace with actual range configuration
     FILENAME = '../dl_rec_read_data_py/res/results_500Hz.txt'
-    MODE = "writing"       # "writing" or "plotting"
+    MODE = "plotting"       # "writing" or "plotting"
 
     app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, 
                       protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, 
