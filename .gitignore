@@ -12,9 +12,11 @@ __pycache__/
 
 # Sample for understanding
 #dl_rec_answer_sns.py
+test.py
 
 # Results of script
-results_term_compens.txt
+*.txt
+
 
 # Distribution / packaging
 .Python

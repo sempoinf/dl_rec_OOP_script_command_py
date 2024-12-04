@@ -126,7 +126,7 @@ class DXL_device:
         self.packet_handler = None
         self.serial_connection = None  # For keep serial.Serial
 
-    def _scan_ports(self, pattern: str = r'^/dev/tty*') -> List[str]:
+    def _scan_ports(self, pattern: str = r'^/dev/cu.usbmodem*') -> List[str]:
         """
         Scan all available COM ports based on the provided pattern.
 
@@ -186,6 +186,19 @@ class DXL_device:
                 print(f"Ping successful: {outping_data}")
                 break
 
+    def _get_port_pattern(self, platform_name: str) -> str:
+        """Return pattern of port depend os"""
+        patterns = {
+            "win": "^/dev/tty*",
+            "linux": "^/dev/cu.*",
+            "darwin": "^/dev/cu.usbmodem*"
+        }
+        # find key 
+        for key, pattern in patterns.items():
+            if platform_name.startswith(key):
+                return pattern
+        return None
+
     def connect_device(self) -> bool:
         """
         Universal connection method.
@@ -194,7 +207,9 @@ class DXL_device:
         Returns:
             bool: True if connection is successful, otherwise False.
         """
-        ports = self._scan_ports(pattern='^/dev/cu.*')
+        os_name = sys.platform
+        port_pattern = self._get_port_pattern(platform_name = os_name)
+        ports = self._scan_ports(pattern=port_pattern)
         baudrates = [self.baudrate] if self.baudrate else (9600, 57600, 115200, 1000000)
         protocol_versions = [self.protocol_ver] if self.protocol_ver else (1.0, 2.0)
 
@@ -394,7 +409,7 @@ class Sensor:
                 return True
 
             try:
-                sensor_ids = [int(id.strip()) for id in selected_id.split(',')]
+                sensor_ids = [int(id.strip()) for id in selected_id.split(',')] # 'space' or , or ,' '
                 print("Selected Sensor IDs:", sensor_ids)
 
                 # Process each selected sensor ID
@@ -605,35 +620,35 @@ class Sensor:
 
     def read_sns_results(self, count_of_measure: int=2, count_bytes_res: int=2)-> list:
         """Start get data from regs desiring sns"""
+        REG_STATUS = 84
+        # print(f"reg_status start sns -- {reg_status}")
         data_read = []
-
+        data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+        print(f"From register DX_SENSORS_STATUS read: {data_status}")
         # nums of itterarion от self.range
         for pair_n in range(count_of_measure):
-            REG_STATUS = 84
-            # print(f"reg_status start sns -- {reg_status}")
             # Read the status from the current register
-            data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
-            # print(f"From register DX_SENSORS_STATUS read: {data_status}")
             if data_status == 128:
                 # Initialize register addresses
-                reg_value = 85
+                REG_VALUE = 85
                 # If status is read successfully, read the value + append
                 for sns in self.sns_id:
-                    time.sleep(0.8)
+                    time.sleep(0.5)
                     # List to store data for the current iteration
                     current_data = []
                     print(f"Sensor {sns}")
                     for num in self.sns_range:
-                        time.sleep(0.2)
-                        sns_val = self._read_data_universal(register_id=reg_value, byte_count=count_bytes_res)
+                        time.sleep(0.5)
+                        sns_val = self._read_data_universal(register_id=REG_VALUE, byte_count=count_bytes_res)
                         bin_data = int((sns_val[0] | (sns_val[1] << 8)))
                         signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                        # print(signed_value)
                         # verify_value = signed_value if signed_value > min(min_max) and signed_value < max(min_max) else None
                         # current_data.append(verify_value)
                         current_data.append(signed_value)
                         # Define the register for the value based on the status register
                         # Move to the next range's registers
-                        reg_value += count_bytes_res
+                        REG_VALUE += count_bytes_res
                         # print(reg_value)
                     
                     # If more than one digit in the range, group data into tuples
@@ -649,6 +664,28 @@ class Sensor:
         print(f"Data taken: {data_read}")
         return data_read
 
+    def read_packet_results(self, count_of_elems: int=2, count_bytes_res: int=2)-> list:
+        """Start get data from regs desiring sns"""
+        # REG_STATUS = 84
+        data_read = []
+        # data_status = self._read_data(register_id=REG_STATUS, byte_count=1)
+        # nums of itterarion от self.range
+        REG_VALUE = 396
+        for cnt in range(count_of_elems):
+            # Read the status from the current register
+            # if data_status == 128:
+                # Initialize register addresses
+                # If status is read successfully, read the value + append
+                # time.sleep(0.01)
+                sns_val = self._read_data_universal(register_id=REG_VALUE, byte_count=count_bytes_res)
+                bin_data = int((sns_val[0] | (sns_val[1] << 8)))
+                signed_value = int.from_bytes(bin_data.to_bytes(2, byteorder='big'), byteorder='big', signed=True)
+                # print(signed_value)
+                data_read.append(signed_value)
+                REG_VALUE += count_bytes_res
+        print(f"Data taken: {data_read}")
+        return data_read
+    
     def __call__(self, *args: Any, **kwds: Any) -> str:
         """
         Return a string representation of the device parameters.
@@ -909,14 +946,14 @@ class Application:
         Handles the 'writing' mode: reads data from sensors and writes it to a file.
         """
         print("Running in 'writing' mode...")
-        COUNT_MEASURE = 100
+        COUNT_MEASURE = 64
         # max_mins = (100, 3500)
         # list_exp = ['0%', '1%', 'Vstill', '2%', '3%', '4%', 'Vstill', '5%', '10%', '20%', '50%', 'Vstill']
-        list_exp_100Hz = ['Vstill', '1000Hz', 'Vstill']
+        list_exp_100Hz = ['Vstill', '500Hz', 'Vstill']
         for i in list_exp_100Hz:
             input(f"Put It down for {i}")
-            time.sleep(5)
-            res_sns = self.sensors.read_sns_results(count_of_measure=COUNT_MEASURE)
+            time.sleep(10)
+            res_sns = self.sensors.read_packet_results(count_of_elems=COUNT_MEASURE)
             if res_sns:
                 self.data_manager = DataManager(filename=self.file_names)
                 self.data_manager.write_data(
@@ -998,12 +1035,14 @@ def main(args: list):
     PROTOCOL_VER = 2.0
     PORT_TIM = 100          # milliseconds
 
-    SENSOR_ID = [2, 40]           # Set to None to allow selection
+    SENSOR_ID = [35]           # Set to None to allow selection
     SENSOR_RANGE = [1]      # Replace with actual range configuration
-    FILENAME = "results_100Hz.txt" # "results_ethanol_0_50.txt"
+    FILENAME = '../dl_rec_read_data_py/res/results_500Hz.txt'
     MODE = "writing"       # "writing" or "plotting"
 
-    app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
+    app = Application(dxl_id=DXL_ID, baudrate=BAUDRATE, 
+                      protocol_version=PROTOCOL_VER, sensor_id=SENSOR_ID, 
+                      sensor_range=SENSOR_RANGE, filename=FILENAME, mode=MODE)
 
     app.run()
 
